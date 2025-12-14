@@ -32,6 +32,7 @@ let upcomingSong: UpcomingSong | null = null;
 let hasPrewarmed = false;
 let lastSongKey = "";
 let isDebug = false;
+let isEnabled = true;
 let isFirstSong = true;
 
 // --- Logging & Debugging ---
@@ -46,15 +47,26 @@ function log(message: any, ...args: any[]) {
     }
 }
 
-// Initialize debug state
-chrome.storage.sync.get(['isDebugEnabled'], (result) => {
-    isDebug = result.isDebugEnabled ?? false;
-});
+// Initialize state and start polling
+function init() {
+    chrome.storage.sync.get(['isDebugEnabled', 'isEnabled'], (result) => {
+        isDebug = result.isDebugEnabled ?? false;
+        isEnabled = result.isEnabled ?? true;
+
+        // Start polling only after we have the initial settings
+        startPolling();
+    });
+}
 
 // Listen for changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'sync' && changes.isDebugEnabled) {
-        isDebug = changes.isDebugEnabled.newValue;
+    if (namespace === 'sync') {
+        if (changes.isDebugEnabled) {
+            isDebug = changes.isDebugEnabled.newValue;
+        }
+        if (changes.isEnabled) {
+            isEnabled = changes.isEnabled.newValue;
+        }
     }
 });
 
@@ -216,69 +228,67 @@ export const getNextSongInQueue = (): UpcomingSong | null => {
 
 
 function get_status() {
-    chrome.storage.sync.get(['isEnabled'], (result) => {
-        // If Chrome extension is disabled
-        if (!result.isEnabled) return; 
-        // If paused, we don't need to do anything (music isn't progressing)
-        // Optimization: If paused, maybe we can poll slower? But 1s is fine.
-        if (isSongPaused()) return;
+    // If Chrome extension is disabled
+    if (!isEnabled) return;
 
-        currentSong = getSongInfo();
-        upcomingSong = getNextSongInQueue();
-        if (currentSong.title === '') {
-            return;
-        }
+    // If paused, we don't need to do anything (music isn't progressing)
+    if (isSongPaused()) return;
 
-        // Was it the first song?
-        if(isFirstSong){
-            //for now do nothing
-            log("This was the first song", currentSong);
-            isFirstSong = false;
-        }
+    currentSong = getSongInfo();
+    upcomingSong = getNextSongInQueue();
+    if (currentSong.title === '') {
+        return;
+    }
 
-        // Check if song changed to reset prewarm flag
-        const songKey = `${currentSong.title}-${currentSong.artist}`;
-        if (songKey !== lastSongKey) {
-            hasPrewarmed = false;
-            lastSongKey = songKey;
-        }
+    // Was it the first song?
+    if(isFirstSong){
+        //for now do nothing
+        log("This was the first song", currentSong);
+        isFirstSong = false;
+    }
 
-        // Pre-warm checking
-        const progress = currentSong.currentTime / currentSong.duration;
-        if (progress > 0.5 && !hasPrewarmed && upcomingSong) {
-            log("Song > 50%. Pre-warming RJ model...");
-            hasPrewarmed = true;
-            const message: MessageSchema = {
-                type: 'PREWARM_RJ',
-                payload: {
-                    oldSongTitle: currentSong.title,
-                    oldArtist: currentSong.artist,
-                    newSongTitle: upcomingSong.title,
-                    newArtist: upcomingSong.artist,
-                    currentTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                }
-            };
-            chrome.runtime.sendMessage(message);
-        }
+    // Check if song changed to reset prewarm flag
+    const songKey = `${currentSong.title}-${currentSong.artist}`;
+    if (songKey !== lastSongKey) {
+        hasPrewarmed = false;
+        lastSongKey = songKey;
+    }
 
-        const timeRemaining = currentSong.duration - currentSong.currentTime;
-        if(timeRemaining>2) return;
-
-        log(`Song ending in 2s. Triggering pause.`);
-        pauseSong();
-        hasAlertedForCurrentSong = true;
-        
+    // Pre-warm checking
+    const progress = currentSong.currentTime / currentSong.duration;
+    if (progress > 0.5 && !hasPrewarmed && upcomingSong) {
+        log("Song > 50%. Pre-warming RJ model...");
+        hasPrewarmed = true;
         const message: MessageSchema = {
-            type: 'SONG_ABOUT_TO_END',
+            type: 'PREWARM_RJ',
             payload: {
-                currentSongTitle: currentSong.title,
-                currentSongArtist: currentSong.artist,
-                upcomingSongTitle: upcomingSong?.title || 'Unknown',
-                upcomingSongArtist: upcomingSong?.artist || 'Unknown'
+                oldSongTitle: currentSong.title,
+                oldArtist: currentSong.artist,
+                newSongTitle: upcomingSong.title,
+                newArtist: upcomingSong.artist,
+                currentTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }
         };
         chrome.runtime.sendMessage(message);
-    });
+    }
+
+    const timeRemaining = currentSong.duration - currentSong.currentTime;
+    if(timeRemaining>2) return;
+
+    log(`Song ending in 2s. Triggering pause.`);
+    pauseSong();
+    hasAlertedForCurrentSong = true;
+
+    const message: MessageSchema = {
+        type: 'SONG_ABOUT_TO_END',
+        payload: {
+            currentSongTitle: currentSong.title,
+            currentSongArtist: currentSong.artist,
+            upcomingSongTitle: upcomingSong?.title || 'Unknown',
+            upcomingSongArtist: upcomingSong?.artist || 'Unknown'
+        }
+    };
+    chrome.runtime.sendMessage(message);
 }
 
 function startPolling() {
@@ -307,8 +317,7 @@ chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendRespon
 
 // Start watching
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startPolling);
+    document.addEventListener('DOMContentLoaded', init);
 } else {
-    startPolling();
+    init();
 }
-

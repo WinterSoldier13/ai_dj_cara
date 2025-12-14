@@ -185,8 +185,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 chrome.runtime.onInstalled.addListener(async (details) => {
-    const settings = await chrome.storage.sync.get(['modelProvider', 'speechProvider']);
+    const settings = await chrome.storage.sync.get(['isEnabled', 'isDebugEnabled', 'modelProvider', 'speechProvider']);
     const updates: any = {};
+
+    // 0. Set defaults
+    if (settings.isEnabled === undefined) {
+        updates.isEnabled = true;
+    }
+    if (settings.isDebugEnabled === undefined) {
+        updates.isDebugEnabled = false;
+    }
 
     // 1. Migrate deprecated "Gemini (Chrome)" -> "Gemini API"
     if (settings.modelProvider === 'gemini') {
