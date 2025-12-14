@@ -203,7 +203,7 @@ async function fetchGeminiTTS(apiKey: string | undefined, text: string): Promise
                 speechConfig: {
                     voiceConfig: {
                         prebuiltVoiceConfig: {
-                            voiceName: "Puck" // Upbeat voice
+                            voiceName: "Aoede" // Breezy female voice
                         }
                     }
                 }
