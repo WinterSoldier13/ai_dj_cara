@@ -22,6 +22,7 @@
 - **🎧 YouTube Music Integration**: Seamlessly monitors playback and announces transitions just before a song ends.
 
 ---
+
 ## Screenshot
 
 ![Screenshot](images/image1.png)
@@ -62,10 +63,13 @@ To unlock the full potential of **AI DJ Cara** with realistic voices (XTTS) and 
 
 #### Setup Instructions
 
-1.  **Navigate to Server Directory**
+1.  **Clone Server Repository**
+
+    The server code is hosted in a separate repository.
 
     ```bash
-    cd local_server
+    git clone https://github.com/WinterSoldier13/dj_cara_server
+    cd dj_cara_server
     ```
 
 2.  **Install Python Requirements**
@@ -88,7 +92,7 @@ To unlock the full potential of **AI DJ Cara** with realistic voices (XTTS) and 
 3.  **Download Models**
     - **LLM**: Download a GGUF model (e.g., `Llama-3.1-8B-Instruct-Q4_K_M.gguf`) from HuggingFace.
     - **TTS**: The server uses Coqui XTTS v2. It will attempt to look for models in the defined path.
-    - _Configuration_: Open `local_server/server.py` and update the paths to your models:
+    - _Configuration_: Open `server.py` and update the paths to your models:
       ```python
       LLM_PATH = "D:/path/to/your/llama.gguf"
       SPEECH_MODEL_PATH = "D:/path/to/xtts_model_folder"
@@ -148,4 +152,4 @@ To unlock the full potential of **AI DJ Cara** with realistic voices (XTTS) and 
 
 ## 📄 License
 
-MIT License. Run wild, DJ!
+CUSTOM LICENSE - PLEASE READ LICENSE
