@@ -3,7 +3,7 @@ export interface StorageSchema {
     isDebugEnabled: boolean;
     modelProvider: 'gemini' | 'gemini-api' | 'webllm' | 'localserver';
     geminiApiKey?: string;
-    speechProvider: 'tts' | 'localserver';
+    speechProvider: 'tts' | 'localserver' | 'gemini-api';
     localServerPort: number;
 }
 
@@ -46,13 +46,11 @@ export type MessageSchema = {
 } | {
     type: 'PLAY_AUDIO';
     payload: {
-        audioData: number[]; // ArrayBuffer/Blob sent as array of numbers/bytes? Or base64 string.
-                             // Passing large data via messaging can be slow. 
-                             // Better to pass a URL if it's a blob url created in background? 
-                             // Verify if Offscreen can fetch directly from localhost if passed port.
-                             // Let's pass the Port and Path and let Offscreen fetch it.
-        localServerPort: number;
+        audioData?: number[]; // Optional now
+        localServerPort?: number;
         textToSpeak: string;
+        speechProvider?: 'tts' | 'localserver' | 'gemini-api';
+        geminiApiKey?: string;
     };
 } | {
     type: 'SPEAK_WITH_LOCAL_SERVER'; // Cleaner command

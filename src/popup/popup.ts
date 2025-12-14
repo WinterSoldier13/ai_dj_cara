@@ -100,7 +100,7 @@ function updateVisibility() {
         localServerConfig.classList.add('hidden');
     }
 
-    if (modelSelect.value === 'gemini-api') {
+    if (modelSelect.value === 'gemini-api' || speechSelect.value === 'gemini-api') {
         geminiApiConfig.classList.remove('hidden');
     } else {
         geminiApiConfig.classList.add('hidden');
