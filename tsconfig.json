@@ -1,0 +1,20 @@
+{
+    "compilerOptions": {
+        "target": "ES6",
+        "module": "ESNext",
+        "lib": [
+            "DOM",
+            "ESNext",
+            "WebWorker"
+        ],
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "moduleResolution": "node",
+        "outDir": "./dist"
+    },
+    "include": [
+        "src/**/*"
+    ]
+}

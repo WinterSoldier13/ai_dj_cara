@@ -1,0 +1,28 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Testing
+coverage
+
+# Production
+dist
+
+# Misc
+.DS_Store
+.env
+.npm
+*.log
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs
+*.njsproj
+*.sln
+*.swp
+
+# Local Server -- I use it for testing 
+local_server

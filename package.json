@@ -1,0 +1,20 @@
+{
+    "name": "ai_dj_cara",
+    "version": "1.0.0",
+    "description": "YouTube Music Chrome Extension",
+    "scripts": {
+        "build": "webpack --mode production",
+        "watch": "webpack --mode development --watch"
+    },
+    "devDependencies": {
+        "copy-webpack-plugin": "^11.0.0",
+        "ts-loader": "^9.4.0",
+        "typescript": "^5.0.0",
+        "webpack": "^5.76.0",
+        "webpack-cli": "^5.0.0"
+    },
+    "dependencies": {
+        "@mlc-ai/web-llm": "^0.2.80",
+        "@types/chrome": "^0.0.260"
+    }
+}

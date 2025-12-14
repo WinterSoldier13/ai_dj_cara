@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI DJ Cara Settings</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <div class="container">
+    <h1>AI DJ Cara</h1>
+    <div class="control-group">
+      <label class="switch">
+        <input type="checkbox" id="enableToggle">
+        <span class="slider round"></span>
+      </label>
+      <span id="statusText">Disabled</span>
+    </div>
+    <div class="control-group">
+      <label class="switch">
+        <input type="checkbox" id="debugToggle">
+        <span class="slider round"></span>
+      </label>
+      <span>Enable Debug Logs</span>
+    </div>
+
+    <div class="control-group column">
+      <label for="modelSelect">Model Provider</label>
+      <select id="modelSelect">
+        <option value="gemini">Gemini (Chrome)</option>
+        <option value="webllm">WebLLM</option>
+        <option value="localserver">Local Server</option>
+      </select>
+    </div>
+
+    <div class="control-group column">
+      <label for="speechSelect">Speech Service</label>
+      <select id="speechSelect">
+        <option value="tts">Chrome TTS</option>
+        <option value="localserver">Local Server</option>
+      </select>
+    </div>
+
+    <div id="localServerConfig" class="control-group column hidden">
+      <label for="portInput">Local Server Port</label>
+      <input type="number" id="portInput" value="8008" placeholder="8008">
+      <button id="testConnectionBtn" class="secondary-btn small-btn">Test Connection</button>
+      <span id="connectionStatus" class="status-msg"></span>
+    </div>
+
+    <button id="settingsBtn" class="secondary-btn hidden">Settings</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+
+</html>
