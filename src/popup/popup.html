@@ -30,9 +30,15 @@
       <label for="modelSelect">Model Provider</label>
       <select id="modelSelect">
         <option value="gemini">Gemini (Chrome)</option>
+        <option value="gemini-api">Gemini (API)</option>
         <option value="webllm">WebLLM</option>
         <option value="localserver">Local Server</option>
       </select>
+    </div>
+
+    <div id="geminiApiConfig" class="control-group column hidden">
+      <label for="geminiApiKeyInput">Gemini API Key</label>
+      <input type="password" id="geminiApiKeyInput" placeholder="Enter your API Key">
     </div>
 
     <div class="control-group column">
@@ -40,6 +46,7 @@
       <select id="speechSelect">
         <option value="tts">Chrome TTS</option>
         <option value="localserver">Local Server</option>
+        <option value="gemini-api">Gemini API (Free Tier)</option>
       </select>
     </div>
 

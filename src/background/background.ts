@@ -30,10 +30,11 @@ export async function generateRJIntro(oldSongTitle: string, oldArtist: string, n
               });
             }
 
-            const settings = await chrome.storage.sync.get(['modelProvider', 'speechProvider', 'localServerPort']);
+            const settings = await chrome.storage.sync.get(['modelProvider', 'speechProvider', 'localServerPort', 'geminiApiKey']);
             const modelProvider = settings.modelProvider || 'gemini';
             const speechProvider = settings.speechProvider || 'tts';
             const localServerPort = settings.localServerPort || 8008;
+            const geminiApiKey = settings.geminiApiKey || '';
 
             const response = await chrome.runtime.sendMessage({
               type: 'GENERATE_RJ',
@@ -44,6 +45,7 @@ export async function generateRJIntro(oldSongTitle: string, oldArtist: string, n
                 newArtist,
                 useWebLLM: modelProvider === 'webllm', // fallback for now
                 modelProvider,
+                geminiApiKey,
                 localServerPort,
                 currentTime
               }
@@ -107,11 +109,12 @@ function announceSong(tabId: number, currentSongTitle: string, currentSongArtist
           alreadyAnnounced.delete(`${currentSongTitle}:::${upcomingSongTitle}`);
       }, 2 * 60 * 1000);
 
-      const settings = await chrome.storage.sync.get(['speechProvider', 'localServerPort']);
+      const settings = await chrome.storage.sync.get(['speechProvider', 'localServerPort', 'geminiApiKey']);
       const speechProvider = settings.speechProvider || 'tts';
       const localServerPort = settings.localServerPort || 8008;
+      const geminiApiKey = settings.geminiApiKey || '';
 
-      if (speechProvider === 'localserver') {
+      if (speechProvider === 'localserver' || speechProvider === 'gemini-api') {
           try {
               // Ensure document exists
                // @ts-ignore
@@ -127,13 +130,15 @@ function announceSong(tabId: number, currentSongTitle: string, currentSongArtist
                   type: 'PLAY_AUDIO',
                   payload: {
                       localServerPort,
-                      textToSpeak: response
+                      textToSpeak: response,
+                      speechProvider,
+                      geminiApiKey
                   }
               });
-              console.log("Local Server TTS ended");
+              console.log(`${speechProvider} TTS ended`);
               chrome.tabs.sendMessage(tabId, { type: 'TTS_ENDED' });
           } catch (e) {
-              console.error("Failed to play audio locally", e);
+              console.error(`Failed to play audio with ${speechProvider}`, e);
               // Fallback to Chrome TTS? Or just fail? Let's fallback.
               console.log("Falling back to Chrome TTS");
               speakNative(response, tabId);

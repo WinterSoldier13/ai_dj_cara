@@ -5,6 +5,8 @@ const debugToggle = document.getElementById('debugToggle') as HTMLInputElement;
 const modelSelect = document.getElementById('modelSelect') as HTMLSelectElement;
 const speechSelect = document.getElementById('speechSelect') as HTMLSelectElement;
 const localServerConfig = document.getElementById('localServerConfig') as HTMLElement;
+const geminiApiConfig = document.getElementById('geminiApiConfig') as HTMLElement;
+const geminiApiKeyInput = document.getElementById('geminiApiKeyInput') as HTMLInputElement;
 const portInput = document.getElementById('portInput') as HTMLInputElement;
 const testConnectionBtn = document.getElementById('testConnectionBtn') as HTMLButtonElement;
 const connectionStatus = document.getElementById('connectionStatus') as HTMLElement;
@@ -12,12 +14,13 @@ const statusText = document.getElementById('statusText') as HTMLElement;
 
 
 // Initialize state
-chrome.storage.sync.get(['isEnabled', 'isDebugEnabled', 'modelProvider', 'speechProvider', 'localServerPort'], (result: Partial<StorageSchema>) => {
+chrome.storage.sync.get(['isEnabled', 'isDebugEnabled', 'modelProvider', 'speechProvider', 'localServerPort', 'geminiApiKey'], (result: Partial<StorageSchema>) => {
     const isEnabled = result.isEnabled ?? true;
     const isDebugEnabled = result.isDebugEnabled ?? false;
     const modelProvider = result.modelProvider || 'gemini';
     const speechProvider = result.speechProvider || 'tts';
     const localServerPort = result.localServerPort || 8008;
+    const geminiApiKey = result.geminiApiKey || '';
 
     updateUI(isEnabled, isDebugEnabled);
     
@@ -25,6 +28,7 @@ chrome.storage.sync.get(['isEnabled', 'isDebugEnabled', 'modelProvider', 'speech
     modelSelect.value = modelProvider;
     speechSelect.value = speechProvider;
     portInput.value = localServerPort.toString();
+    geminiApiKeyInput.value = geminiApiKey;
 
     updateVisibility();
 });
@@ -62,6 +66,11 @@ portInput.addEventListener('change', () => {
     }
 });
 
+geminiApiKeyInput.addEventListener('change', () => {
+    const geminiApiKey = geminiApiKeyInput.value;
+    chrome.storage.sync.set({ geminiApiKey });
+});
+
 testConnectionBtn.addEventListener('click', async () => {
     const port = portInput.value;
     connectionStatus.textContent = "Testing...";
@@ -89,6 +98,12 @@ function updateVisibility() {
         localServerConfig.classList.remove('hidden');
     } else {
         localServerConfig.classList.add('hidden');
+    }
+
+    if (modelSelect.value === 'gemini-api' || speechSelect.value === 'gemini-api') {
+        geminiApiConfig.classList.remove('hidden');
+    } else {
+        geminiApiConfig.classList.add('hidden');
     }
 }
 
