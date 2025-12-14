@@ -50,14 +50,16 @@ export async function generateRJIntro(oldSongTitle: string, oldArtist: string, n
               }
             });
 
-            // Trigger Audio Preload if using Local Server TTS
-            if (speechProvider === 'localserver' && response) {
+            // Trigger Audio Preload if using Local Server TTS or Gemini API
+            if ((speechProvider === 'localserver' || speechProvider === 'gemini-api') && response) {
                  console.log("Triggering Audio Preload for:", response);
                  chrome.runtime.sendMessage({
                     type: 'PRELOAD_AUDIO',
                     payload: {
                         localServerPort,
-                        textToSpeak: response
+                        textToSpeak: response,
+                        speechProvider,
+                        geminiApiKey
                     }
                  });
             }

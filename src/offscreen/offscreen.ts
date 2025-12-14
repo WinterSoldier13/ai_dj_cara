@@ -33,14 +33,23 @@ async function fetchAudio(localServerPort: number, textToSpeak: string): Promise
     return url;
 }
 
-async function preloadAudio(payload: { localServerPort: number; textToSpeak: string }) {
+async function preloadAudio(payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api'; geminiApiKey?: string }) {
    if (audioCache.has(payload.textToSpeak)) {
        console.log("Audio already cached (or fetching) for:", payload.textToSpeak);
        return;
    }
    
    console.log("Starting Preload for:", payload.textToSpeak);
-   const audioPromise = fetchAudio(payload.localServerPort, payload.textToSpeak);
+
+   let audioPromise;
+   if (payload.speechProvider === 'localserver') {
+       const port = payload.localServerPort || 8008;
+       audioPromise = fetchAudio(port, payload.textToSpeak);
+   } else {
+       // Default to Gemini API
+       audioPromise = fetchGeminiTTS(payload.geminiApiKey, payload.textToSpeak);
+   }
+
    audioCache.set(payload.textToSpeak, audioPromise);
    
    try {
