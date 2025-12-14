@@ -32,11 +32,11 @@ jobs:
       # Step 5: Zip the 'dist' folder
       # Change 'dist' below if your build output folder has a different name
       - name: Zip output
-        run: cd dist && zip -r ../extension.zip .
+        run: cd dist && zip -r ../ai_dj_cara.zip .
 
       # Step 6: Upload the zip file so you can download it
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: chrome-extension-build
-          path: extension.zip
+          path: ai_dj_cara.zip
