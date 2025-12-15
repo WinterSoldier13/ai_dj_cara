@@ -38,7 +38,8 @@ jobs:
           artifacts: "ai_dj_cara.zip"
           tag: "latest"
           name: "Latest Build (ai_dj_cara)"
-          body: "This release is automatically updated with the latest code from the main branch."
+          body: "Last updated: ${{ github.event.head_commit.timestamp }}\n\nThis release is automatically updated from the main branch."
           allowUpdates: true
           removeArtifacts: true
+          replacesArtifacts: true # Ensure old binaries are purged
           makeLatest: true
