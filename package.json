@@ -15,6 +15,7 @@
     },
     "dependencies": {
         "@mlc-ai/web-llm": "^0.2.80",
-        "@types/chrome": "^0.0.260"
+        "@types/chrome": "^0.0.260",
+        "kokoro-js": "^1.2.1"
     }
 }

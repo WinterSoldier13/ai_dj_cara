@@ -1,7 +1,13 @@
 import { MessageSchema } from '../utils/types';
 import { RJ_SYSTEM_PROMPT } from './constants';
+import { KokoroTTS } from 'kokoro-js';
 
 const audioCache = new Map<string, Promise<string>>(); // text -> Promise<blobUrl>
+
+// Lazy-loaded KokoroTTS instance
+let kokoroTTSInstance: KokoroTTS | null = null;
+const KOKORO_MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX"; // default
+const KOKORO_VOICE = "af_nicole"; // Female voice with headphones trait, suitable for RJ
 
 chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendResponse) => {
   if (message.type === 'GENERATE_RJ') {
@@ -33,7 +39,7 @@ async function fetchAudio(localServerPort: number, textToSpeak: string): Promise
     return url;
 }
 
-async function preloadAudio(payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api'; geminiApiKey?: string }) {
+async function preloadAudio(payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api' | 'kokoro'; geminiApiKey?: string }) {
    if (audioCache.has(payload.textToSpeak)) {
        console.log("Audio already cached (or fetching) for:", payload.textToSpeak);
        return;
@@ -45,6 +51,8 @@ async function preloadAudio(payload: { localServerPort?: number; textToSpeak: st
    if (payload.speechProvider === 'localserver') {
        const port = payload.localServerPort || 8008;
        audioPromise = fetchAudio(port, payload.textToSpeak);
+   } else if (payload.speechProvider === 'kokoro') {
+       audioPromise = fetchKokoroTTS(payload.textToSpeak);
    } else {
        // Default to Gemini API
        audioPromise = fetchGeminiTTS(payload.geminiApiKey, payload.textToSpeak);
@@ -155,7 +163,7 @@ async function generateWithGeminiAPI(data: { oldSongTitle: string, oldArtist: st
     }
 }
 
-async function playAudio(payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api'; geminiApiKey?: string }) {
+async function playAudio(payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api' | 'kokoro'; geminiApiKey?: string }) {
     try {
         let audioPromise = audioCache.get(payload.textToSpeak);
 
@@ -165,6 +173,8 @@ async function playAudio(payload: { localServerPort?: number; textToSpeak: strin
              if (payload.speechProvider === 'localserver') {
                  const port = payload.localServerPort || 8008;
                  audioPromise = fetchAudio(port, payload.textToSpeak);
+             } else if (payload.speechProvider === 'kokoro') {
+                 audioPromise = fetchKokoroTTS(payload.textToSpeak);
              } else {
                  // Default: Gemini API
                  audioPromise = fetchGeminiTTS(payload.geminiApiKey, payload.textToSpeak);
@@ -176,7 +186,7 @@ async function playAudio(payload: { localServerPort?: number; textToSpeak: strin
         
         const urlOrBuffer = await audioPromise;
 
-        // If it's a blob URL (localserver), use Audio element
+        // If it's a blob URL (localserver or Kokoro), use Audio element
         if (typeof urlOrBuffer === 'string' && urlOrBuffer.startsWith('blob:')) {
             const audio = new Audio(urlOrBuffer);
             return new Promise<void>((resolve, reject) => {
@@ -198,6 +208,35 @@ async function playAudio(payload: { localServerPort?: number; textToSpeak: strin
         console.error("Audio playback failed", e);
         audioCache.delete(payload.textToSpeak);
         throw e;
+    }
+}
+
+async function fetchKokoroTTS(text: string): Promise<string> {
+    console.log("Fetching Audio from Kokoro JS...");
+    try {
+        if (!kokoroTTSInstance) {
+            console.log("Initializing KokoroTTS model...");
+            kokoroTTSInstance = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
+                dtype: "q8", // 8-bit quantization for browser efficiency
+            });
+            console.log("KokoroTTS model initialized.");
+        }
+
+        console.log("Generating audio with KokoroTTS...");
+        // Generate audio
+        const rawAudio = await kokoroTTSInstance.generate(text, {
+            voice: KOKORO_VOICE,
+        });
+
+        // Convert RawAudio to Blob URL
+        const blob = rawAudio.toBlob();
+        const url = URL.createObjectURL(blob);
+        console.log("Kokoro audio generated and blob created.");
+        return url;
+
+    } catch (err) {
+        console.error("Kokoro TTS failed:", err);
+        throw err;
     }
 }
 

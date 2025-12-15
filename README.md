@@ -17,7 +17,7 @@ Remember DJ Cara from NonStopPop FM in GTA V? Ja, I wanted something similar for
 *   **WebLLM Support**: Runs powerful local LLMs directly in your browser using WebGPU for privacy and offline capability.
 *   **Local Server Support**: Connect to your own local Python server for maximum control, custom models, and zero-compromise performance.
 *   **Smart Caching & Pre-fetch**: Automatically anticipates song transitions, pre-generates scripts, and pre-fetches high-quality audio to ensure instant, seamless playback without delays.
-*   **Dynamic Speech**: Supports Chrome TTS, Local XTTS v2, and Gemini API for realistic voice output.
+*   **Dynamic Speech**: Supports Chrome TTS, Kokoro JS (In-Browser), Local XTTS v2, and Gemini API for realistic voice output.
 
 ## Recommended way to use
 
@@ -125,7 +125,7 @@ To unlock the full potential of **AI DJ Cara** with realistic voices (XTTS) and 
 ## Configuration
 
 *   **Model Provider**: Choose between Gemini API (recommended), WebLLM, or Local Server.
-*   **Speech Provider**: Select the voice service (Gemini API, Chrome TTS, or Local Server).
+*   **Speech Provider**: Select the voice service (Gemini API, Kokoro JS, Chrome TTS, or Local Server).
 *   **API Key**: Enter your Gemini API key if using the Gemini API provider.
 *   **Local Server Port**: Set the port for your local server (default is 8008) if using the Local Server provider.
 

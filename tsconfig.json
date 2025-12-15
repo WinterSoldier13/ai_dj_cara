@@ -12,7 +12,10 @@
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
         "moduleResolution": "node",
-        "outDir": "./dist"
+        "outDir": "./dist",
+        "paths": {
+            "kokoro-js": ["./node_modules/kokoro-js/types/kokoro.d.ts"]
+        }
     },
     "include": [
         "src/**/*"

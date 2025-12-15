@@ -3,7 +3,7 @@ export interface StorageSchema {
     isDebugEnabled: boolean;
     modelProvider: 'gemini' | 'gemini-api' | 'webllm' | 'localserver';
     geminiApiKey?: string;
-    speechProvider: 'tts' | 'localserver' | 'gemini-api';
+    speechProvider: 'tts' | 'localserver' | 'gemini-api' | 'kokoro';
     localServerPort: number;
 }
 
@@ -49,7 +49,7 @@ export type MessageSchema = {
         audioData?: number[]; // Optional now
         localServerPort?: number;
         textToSpeak: string;
-        speechProvider?: 'tts' | 'localserver' | 'gemini-api';
+        speechProvider?: 'tts' | 'localserver' | 'gemini-api' | 'kokoro';
         geminiApiKey?: string;
     };
 } | {
@@ -61,8 +61,10 @@ export type MessageSchema = {
 } | {
     type: 'PRELOAD_AUDIO';
     payload: {
-        localServerPort: number;
+        localServerPort?: number;
         textToSpeak: string;
+        speechProvider?: 'tts' | 'localserver' | 'gemini-api' | 'kokoro';
+        geminiApiKey?: string;
     }
 };
 
