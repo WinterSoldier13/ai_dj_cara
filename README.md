@@ -117,11 +117,10 @@ To unlock the full potential of **AI DJ Cara** with realistic voices (XTTS) and 
 4.  **Run the Server**
 
     ```bash
-    python server.py --start_llm --port 8008
+    python server.py --start_llm --port 5000
     ```
 
     - `--start_llm`: Enables the LLM service. Omit if you only want to use the local TTS with WebLLM/Gemini.
-    - `--port`: Default is 8008.
 
 ## Configuration
 
