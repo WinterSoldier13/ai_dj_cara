@@ -1,32 +1,32 @@
 # AI DJ Cara - Your Personal AI Radio Jockey 🎙️🎵
 
-> This is better than the best fucking thing I've ever coded in my life.
+> "probably the best fucking thing I've ever coded for myself" - Ayush
 
 **AI DJ Cara** transforms your YouTube Music experience by adding a personality to your playlist. Just like a real Radio Jockey, Cara introduces the next song with hype, wit, and energy, making your listening session feel like a live radio show curated just for you.
-
-## ✨ Features
-
-- **🗣️ AI Radio Jockey**: Generates context-aware, witty, and **high-energy** intros for upcoming songs. Meet **Cara**, your charismatic host who aggressively hypes up the transitions!
-- **🧠 Multiple AI Models**:
-  - **Gemini API (Recommended)**: Connects to Google's powerful Gemini 2.5 Flash model for free. Fast, high-quality, and reliable.
-  - **Gemini Nano (Chrome Built-in)**: Zero latency, runs entirely in the browser using experimental Chrome AI APIs.
-  - **WebLLM**: Runs powerful local LLMs (like Llama 3) directly in your browser using WebGPU.
-  - **Local Server**: Connect to your own powerful local Python server for maximum control, custom models, and zero-compromise performance.
-- **🔊 Dynamic Speech**:
-  - **Chrome TTS**: Lightweight, fast, and reliable.
-  - **Local XTTS v2**: High-quality, emotive, and realistic voice cloning that sounds just like a real human dynamic RJ.
-- **⚡ Smart Caching & Pre-fetch**:
-  - Automatically identifies when a song is closing (at 50% mark).
-  - Pre-generates the script and **pre-fetches** the high-quality audio from the local server.
-  - Ensures the intro is ready to play instantly when the song ends, even for large audio files.
-  - Includes auto-cleanup to prevent memory leaks.
-- **🎧 YouTube Music Integration**: Seamlessly monitors playback and announces transitions just before a song ends.
-
----
 
 ## Screenshot
 
 ![Screenshot](images/image1.png)
+
+## Features
+
+*   **Gemini API Support**: Connects to Google's powerful Gemini models for high-quality, fast, and free generations.
+*   **WebLLM Support**: Runs powerful local LLMs directly in your browser using WebGPU for privacy and offline capability.
+*   **Local Server Support**: Connect to your own local Python server for maximum control, custom models, and zero-compromise performance.
+*   **Smart Caching & Pre-fetch**: Automatically anticipates song transitions, pre-generates scripts, and pre-fetches high-quality audio to ensure instant, seamless playback without delays.
+*   **Dynamic Speech**: Supports Chrome TTS, Local XTTS v2, and Gemini API for realistic voice output.
+
+## Recommended way to use
+
+The recommended way to use AI DJ Cara is with the **Gemini API**. It's fast, reliable, and offers a great balance of quality and performance.
+
+1.  **Get a Free API Key**: Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and create a free API key.
+2.  **Configure**: Enter your API key in the extension settings.
+3.  **Check Limits**: Be aware of the [rate limits for the free tier](https://ai.google.dev/gemini-api/docs/models/gemini#rate-limits).
+
+## Download
+
+You can download the compiled version (excluding WebLLM for a smaller file size) from the [Releases](https://github.com/your-repo/ai_dj_cara/releases) tab.
 
 ## 🛠️ Installation & Setup
 
@@ -120,51 +120,25 @@ To unlock the full potential of **AI DJ Cara** with realistic voices (XTTS) and 
     - `--start_llm`: Enables the LLM service. Omit if you only want to use the local TTS with WebLLM/Gemini.
     - `--port`: Default is 8008.
 
----
+## Configuration
 
-## ⚙️ Configuration
+*   **Model Provider**: Choose between Gemini API (recommended), WebLLM, or Local Server.
+*   **Speech Provider**: Select the voice service (Gemini API, Chrome TTS, or Local Server).
+*   **API Key**: Enter your Gemini API key if using the Gemini API provider.
+*   **Local Server Port**: Set the port for your local server (default is 8008) if using the Local Server provider.
 
-1.  Click the **AI DJ Cara** icon in your Chrome toolbar.
-2.  **Model Provider**:
-    - _Gemini API (Recommended)_: Uses Google's Cloud API. Requires a free API key.
+## FAQ
 
-    - _WebLLM_: Downloads and runs models in the browser via WebGPU.
-    - _Local Server_: Connects to your running Python server for generation.
+*   **Local Server Performance**: To use the local server effectively for fast responses, you should have a GPU with CUDA support.
+*   **Debugging**: If you encounter issues, enable "Debug Mode" in the extension settings. Then, check the console logs of the YouTube Music tab, the extension's service worker, and the `offscreen.html` page (accessible via `chrome://extensions` -> Details -> Inspect views).
+*   **Gemini API Limits**: If the extension stops working suddenly while using the Gemini API, you may have hit the rate limits.
+*   **Extension not working**: Ensure you are on `music.youtube.com` and playing a song.
 
-3.  **Speech Service**:
-    - _Chrome TTS_: Robotic but fast.
-    - _Local Server_: Uses the high-quality XTTS voice from your python server.
-4.  **Local Server Port**: Ensure this matches your running server (default 8008).
-5.  **Test Connection**: Click to verify your extension can talk to the local server.
+## Contribution
 
----
+Please create an Issue first to discuss your ideas before working on a PR.
+*   **Good First Issue**: Integrating AI DJ Cara with Spotify Web would be a fantastic contribution!
 
-## 🧠 How It Works
+## LICENSE
 
-1.  **Monitoring**: The content script watches the DOM on `music.youtube.com` for song progress.
-2.  **Trigger**: When a song is near its end, the extension captures the current song metadata and the next up song.
-3.  **Generation**:
-    - A prompt is sent to the selected **Model Provider** (e.g., "The song 'Hello' is ending, introduce 'Levitating'").
-    - The model returns a witty, DJ-style script.
-4.  **Audio Synthesis**:
-    - The script is sent to the **Speech Service** to be converted into audio.
-    - If using **Local Server**, the audio is pre-fetched and cached in the background.
-5.  **Playback**: The audio is played cleanly over the music (or pausing it briefly depending on configuration) to create a seamless transition.
-
----
-
-## 🐛 Troubleshooting
-
-- **"Connection Refused"**:
-  - Ensure the Python server is running (`python server.py`).
-  - Verify `manifest.json` permits `http://localhost`.
-  - **Fix**: Reload the extension in `chrome://extensions`.
-- **Latency / Delays**:
-  - The extension uses "Smart Caching" to pre-load audio. If latency persists, ensure your GPU is powerful enough for XTTS v2.
-  - Check the server logs to see generation times.
-- **WebLLM Slow**:
-  - WebLLM requires a decent GPU. First load will take time to download weights (cached afterwards).
-
-## 📄 License
-
-CUSTOM LICENSE - PLEASE READ LICENSE
+We use a custom license for this project, please read it at [LICENSE](LICENSE).
