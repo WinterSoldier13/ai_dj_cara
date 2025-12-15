@@ -1,6 +1,6 @@
 # AI DJ Cara - Your Personal AI Radio Jockey 🎙️🎵
 
-> "probably the best fucking thing I've ever coded for myself" - Ayush
+> probably the best fucking thing I've ever coded for myself
 
 **AI DJ Cara** transforms your YouTube Music experience by adding a personality to your playlist. Just like a real Radio Jockey, Cara introduces the next song with hype, wit, and energy, making your listening session feel like a live radio show curated just for you.
 
@@ -28,7 +28,7 @@ The recommended way to use AI DJ Cara is with the **Gemini API**. It's fast, rel
 
 You can download the compiled version (excluding WebLLM for a smaller file size) from the [Releases](https://github.com/your-repo/ai_dj_cara/releases) tab.
 
-## 🛠️ Installation & Setup
+## Installation & Setup
 
 ### Part 1: Chrome Extension
 
@@ -132,7 +132,6 @@ To unlock the full potential of **AI DJ Cara** with realistic voices (XTTS) and 
 *   **Local Server Performance**: To use the local server effectively for fast responses, you should have a GPU with CUDA support.
 *   **Debugging**: If you encounter issues, enable "Debug Mode" in the extension settings. Then, check the console logs of the YouTube Music tab, the extension's service worker, and the `offscreen.html` page (accessible via `chrome://extensions` -> Details -> Inspect views).
 *   **Gemini API Limits**: If the extension stops working suddenly while using the Gemini API, you may have hit the rate limits.
-*   **Extension not working**: Ensure you are on `music.youtube.com` and playing a song.
 
 ## Contribution
 
