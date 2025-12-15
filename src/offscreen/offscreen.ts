@@ -62,7 +62,7 @@ async function preloadAudio(payload: { localServerPort?: number; textToSpeak: st
    
    try {
        await audioPromise;
-       console.log("Audio preload completed successfully.");
+       console.log("Audio preload (prefetch) completed successfully.");
        
         // Cleanup after 10 mins
         setTimeout(async () => {
@@ -84,9 +84,10 @@ async function preloadAudio(payload: { localServerPort?: number; textToSpeak: st
 async function handleGeneration(payload: { oldSongTitle: string; oldArtist: string; newSongTitle: string; newArtist: string; modelProvider?: 'gemini' | 'gemini-api' | 'webllm' | 'localserver'; geminiApiKey?: string; useWebLLM?: boolean; localServerPort?: number; currentTime?: string; systemPrompt?: string }) {
     // Default to gemini-api if not specified
     const modelProvider = payload.modelProvider || 'gemini-api';
+    let generationPromise: Promise<string>;
 
     if (modelProvider === 'localserver') {
-        return generateWithLocalServer(payload);
+        generationPromise = generateWithLocalServer(payload);
     } else if (modelProvider === 'webllm' || payload.useWebLLM) {
         // Condition checked at build time
         if (process.env.INCLUDE_WEBLLM) {
@@ -97,7 +98,7 @@ async function handleGeneration(payload: { oldSongTitle: string; oldArtist: stri
             try {
                 // @ts-ignore
                 const webLLMService = await import('./webllmService');
-                return webLLMService.generateWithWebLLM(payload);
+                generationPromise = webLLMService.generateWithWebLLM(payload);
             } catch (e) {
                 console.error("Failed to load WebLLM service:", e);
                 return "WebLLM service not available in this build.";
@@ -108,7 +109,16 @@ async function handleGeneration(payload: { oldSongTitle: string; oldArtist: stri
         }
     } else {
         // Default: Gemini API
-        return generateWithGeminiAPI(payload);
+        generationPromise = generateWithGeminiAPI(payload);
+    }
+
+    try {
+        const text = await generationPromise;
+        console.log("LLM generation (prefetch) completed successfully.");
+        return text;
+    } catch (error) {
+        console.error("LLM generation failed:", error);
+        throw error;
     }
 }
 
@@ -165,6 +175,7 @@ async function generateWithGeminiAPI(data: { oldSongTitle: string, oldArtist: st
 
 async function playAudio(payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api' | 'kokoro'; geminiApiKey?: string }) {
     try {
+        console.log(`Playing audio using provider: ${payload.speechProvider || 'gemini-api'}`);
         let audioPromise = audioCache.get(payload.textToSpeak);
 
         if (!audioPromise) {
