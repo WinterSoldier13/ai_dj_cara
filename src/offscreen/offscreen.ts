@@ -1,20 +1,30 @@
 import { MessageSchema } from '../utils/types';
 import { RJ_SYSTEM_PROMPT } from './constants';
 import { KokoroTTS } from 'kokoro-js';
+import { env } from '@huggingface/transformers';
+import { sha256 } from '../utils/hashing';
+
+// Configure Transformers.js / ONNX Runtime to use local files (MV3 compliant)
+env.allowLocalModels = false; // We are likely fetching model weights from HF Hub (via fetch, which is allowed)
+if (env.backends?.onnx?.wasm) {
+    env.backends.onnx.wasm.wasmPaths = "./"; // Look for .wasm files in the same directory (root of dist)
+    env.backends.onnx.wasm.proxy = false; // Disable proxy to avoid worker complexities often found in extensions
+}
+
 
 const audioCache = new Map<string, Promise<string>>(); // text -> Promise<blobUrl>
 
 // Lazy-loaded KokoroTTS instance
 let kokoroTTSInstance: KokoroTTS | null = null;
 const KOKORO_MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX"; // default
-const KOKORO_VOICE = "af_nicole"; // Female voice with headphones trait, suitable for RJ
+const KOKORO_VOICE = "af_bella"; // Bright, energetic female voice (Bella)
 
 chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendResponse) => {
   if (message.type === 'GENERATE_RJ') {
     handleGeneration(message.payload).then(sendResponse);
     return true; // Keep channel open
   } else if (message.type === 'PLAY_AUDIO') {
-    playAudio(message.payload).then(() => sendResponse({success: true})).catch((err) => sendResponse({success: false, error: err}));
+    playAudio(message.payload.tabId, message.payload).then(() => sendResponse({success: true})).catch((err) => sendResponse({success: false, error: err}));
     return true;
   } else if (message.type === 'PRELOAD_AUDIO') {
     preloadAudio(message.payload); // Fire and forget for response, but we log internally
@@ -45,7 +55,19 @@ async function preloadAudio(payload: { localServerPort?: number; textToSpeak: st
        return;
    }
    
-   console.log("Starting Preload for:", payload.textToSpeak);
+   console.log(`[Offscreen] Starting Audio Preload from: ${payload.speechProvider}`);
+
+   // Check OPFS Cache first (Persistent)
+   const cacheKey = `${payload.textToSpeak}_${payload.speechProvider}`;
+   try {
+       const opfsUrl = await getAudioFromOPFS(cacheKey);
+       if (opfsUrl) {
+           console.log(`[Offscreen] [Cache Hit] Audio found in OPFS for: ${cacheKey}`);
+           return;
+       }
+   } catch (e) {
+       console.warn("OPFS Check failed", e);
+   }
 
    let audioPromise;
    if (payload.speechProvider === 'localserver') {
@@ -54,17 +76,23 @@ async function preloadAudio(payload: { localServerPort?: number; textToSpeak: st
    } else if (payload.speechProvider === 'kokoro') {
        audioPromise = fetchKokoroTTS(payload.textToSpeak);
    } else {
-       // Default to Gemini API
        audioPromise = fetchGeminiTTS(payload.geminiApiKey, payload.textToSpeak);
    }
 
    audioCache.set(payload.textToSpeak, audioPromise);
    
    try {
-       await audioPromise;
-       console.log("Audio preload (prefetch) completed successfully.");
+       const url = await audioPromise;
+       console.log(`[Offscreen] Audio preload (prefetch) completed successfully from ${payload.speechProvider}`);
+
+       // Save to OPFS
+       if (url.startsWith('blob:')) {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            await saveAudioToOPFS(cacheKey, blob);
+       }
        
-        // Cleanup after 10 mins
+        // Cleanup memory cache after 10 mins
         setTimeout(async () => {
             if (audioCache.has(payload.textToSpeak)) {
                 try {
@@ -84,7 +112,7 @@ async function preloadAudio(payload: { localServerPort?: number; textToSpeak: st
 async function handleGeneration(payload: { oldSongTitle: string; oldArtist: string; newSongTitle: string; newArtist: string; modelProvider?: 'gemini' | 'gemini-api' | 'webllm' | 'localserver'; geminiApiKey?: string; useWebLLM?: boolean; localServerPort?: number; currentTime?: string; systemPrompt?: string }) {
     // Default to gemini-api if not specified
     const modelProvider = payload.modelProvider || 'gemini-api';
-    console.log(`Generating RJ intro using LLM provider: ${modelProvider}`);
+    console.log(`[Offscreen] Generating RJ intro using LLM provider: ${modelProvider}`);
     let generationPromise: Promise<string>;
 
     if (modelProvider === 'localserver') {
@@ -115,7 +143,7 @@ async function handleGeneration(payload: { oldSongTitle: string; oldArtist: stri
 
     try {
         const text = await generationPromise;
-        console.log("LLM generation (prefetch) completed successfully.");
+        console.log("[Offscreen] LLM generation (prefetch) completed successfully.");
         return text;
     } catch (error) {
         console.error("LLM generation failed:", error);
@@ -174,26 +202,38 @@ async function generateWithGeminiAPI(data: { oldSongTitle: string, oldArtist: st
     }
 }
 
-async function playAudio(payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api' | 'kokoro'; geminiApiKey?: string }) {
+async function playAudio(tabId: number, payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api' | 'kokoro'; geminiApiKey?: string }) {
     try {
-        console.log(`Playing audio using provider: ${payload.speechProvider || 'gemini-api'}`);
+        console.log(`[Offscreen] Playing audio using provider: ${payload.speechProvider || 'tts'}`);
+
+        // 1. Try Memory Cache
         let audioPromise = audioCache.get(payload.textToSpeak);
 
+        // 2. Try OPFS Cache
+        const cacheKey = `${payload.textToSpeak}_${payload.speechProvider}`;
         if (!audioPromise) {
-             console.log("Audio not cached, requesting now (Just-In-Time)...");
-             // Default to Gemini API if not local
+            try {
+                const opfsUrl = await getAudioFromOPFS(cacheKey);
+                if (opfsUrl) {
+                    console.log(`[Offscreen] [Cache Hit] Audio found in OPFS`);
+                    audioPromise = Promise.resolve(opfsUrl);
+                }
+            } catch (e) { console.warn("OPFS Lookup failed", e) }
+        }
+
+        if (!audioPromise) {
+             console.log("[Offscreen] Audio not cached, requesting now (Just-In-Time)...");
              if (payload.speechProvider === 'localserver') {
                  const port = payload.localServerPort || 8008;
                  audioPromise = fetchAudio(port, payload.textToSpeak);
              } else if (payload.speechProvider === 'kokoro') {
                  audioPromise = fetchKokoroTTS(payload.textToSpeak);
              } else {
-                 // Default: Gemini API
                  audioPromise = fetchGeminiTTS(payload.geminiApiKey, payload.textToSpeak);
              }
              audioCache.set(payload.textToSpeak, audioPromise);
         } else {
-            console.log("Playing cached audio (awaiting promise if pending).");
+            console.log(`[Offscreen] Playing cached audio from provider: ${payload.speechProvider} (awaiting promise if pending).`);
         }
         
         const urlOrBuffer = await audioPromise;
@@ -217,24 +257,36 @@ async function playAudio(payload: { localServerPort?: number; textToSpeak: strin
             });
         }
     } catch (e) {
-        console.error("Audio playback failed", e);
+        console.error("[Offscreen] Audio playback failed, failing back to TTS", e);
+    chrome.tts.speak(payload.textToSpeak, {
+        rate: 0.9,
+        pitch: 1.1,
+        volume: 1,
+        voiceName: 'Google UK English Female',
+        onEvent: (event) => {
+            if (event.type === 'end') {
+                console.log("[Offscreen] Fallback TTS ended");
+                chrome.tabs.sendMessage(tabId, { type: 'TTS_ENDED' });
+            }
+        }
+      });
         audioCache.delete(payload.textToSpeak);
         throw e;
     }
 }
 
 async function fetchKokoroTTS(text: string): Promise<string> {
-    console.log("Fetching Audio from Kokoro JS...");
+    console.log("[Offscreen] [Kokoro] Fetching Audio...");
     try {
         if (!kokoroTTSInstance) {
-            console.log("Initializing KokoroTTS model...");
+            console.log("[Offscreen] [Kokoro] Initializing model...");
             kokoroTTSInstance = await KokoroTTS.from_pretrained(KOKORO_MODEL_ID, {
                 dtype: "q8", // 8-bit quantization for browser efficiency
             });
-            console.log("KokoroTTS model initialized.");
+            console.log("[Offscreen] [Kokoro] Model initialized.");
         }
 
-        console.log("Generating audio with KokoroTTS...");
+        console.log("[Offscreen] [Kokoro] Generating audio...");
         // Generate audio
         const rawAudio = await kokoroTTSInstance.generate(text, {
             voice: KOKORO_VOICE,
@@ -243,7 +295,7 @@ async function fetchKokoroTTS(text: string): Promise<string> {
         // Convert RawAudio to Blob URL
         const blob = rawAudio.toBlob();
         const url = URL.createObjectURL(blob);
-        console.log("Kokoro audio generated and blob created.");
+        console.log("[Offscreen] [Kokoro] Audio generated and blob created.");
         return url;
 
     } catch (err) {
@@ -377,4 +429,66 @@ async function generateWithLocalServer(data: { oldSongTitle: string, oldArtist: 
        console.error("Local Server Model failed:", err);
        return `Coming up next: ${data.newSongTitle} by ${data.newArtist}.`;
    }
+}
+
+// --- OPFS Utilities ---
+
+async function getAudioFromOPFS(key: string): Promise<string | null> {
+    try {
+        const hash = await sha256(key);
+        const filename = `dj_audio_${hash}.wav`;
+        console.log(`[OPFS] Reading ${filename} for key length: ${key.length}`);
+        const root = await navigator.storage.getDirectory();
+        const fileHandle = await root.getFileHandle(filename);
+        const file = await fileHandle.getFile();
+        return URL.createObjectURL(file);
+    } catch (error) {
+        console.log(`[OPFS] Miss/Error for key length: ${key.length}`, error);
+        return null; 
+    }
+}
+
+async function saveAudioToOPFS(key: string, blob: Blob) {
+    try {
+        const hash = await sha256(key);
+        const filename = `dj_audio_${hash}.wav`;
+        console.log(`[OPFS] Saving ${filename} for key length: ${key.length}`);
+        const root = await navigator.storage.getDirectory();
+        const fileHandle = await root.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        console.log(`[Offscreen] [OPFS] Saved audio: ${filename}`);
+        
+        // Trigger cleanup roughly
+        cleanUpOldFiles(); 
+    } catch (error) {
+        console.error("[Offscreen] [OPFS] Save failed:", error);
+    }
+}
+
+async function cleanUpOldFiles() {
+    // Random check (1 in 10) to avoid running on every save
+    if (Math.random() > 0.1) return;
+
+    console.log("[Offscreen] [OPFS] Running cleanup...");
+    try {
+        const root = await navigator.storage.getDirectory();
+        // @ts-ignore - values() iterator
+        for await (const name of root.keys()) {
+            if (name.startsWith('dj_audio_')) {
+                try {
+                    const handle = await root.getFileHandle(name);
+                    const file = await handle.getFile();
+                    // Delete if older than 30 mins
+                    if (Date.now() - file.lastModified > 30 * 60 * 1000) {
+                         await root.removeEntry(name);
+                         console.log(`[Offscreen] [OPFS] Deleted old file: ${name}`);
+                    }
+                } catch (e) {}
+            }
+        }
+    } catch (e) {
+        console.warn("[Offscreen] Cleanup failed", e);
+    }
 }

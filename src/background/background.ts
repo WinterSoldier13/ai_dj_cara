@@ -1,24 +1,28 @@
 import { MessageSchema } from '../utils/types';
 
 // Currently Gemini for Chrome is not available in all regions :(
-const introCache = new Map<string, Promise<string>>();
+// const introCache = new Map<string, Promise<string>>(); // REMOVED: In-memory cache
 const alreadyAnnounced = new Set<string>();
 
 function getCacheKey(oldTitle: string, newTitle: string): string {
-    return `${oldTitle}:::${newTitle}`;
+    // Sanitize keys for storage
+    return `rj_intro_${oldTitle.replace(/\W/g, '')}_${newTitle.replace(/\W/g, '')}`;
 }
 
 export async function generateRJIntro(oldSongTitle: string, oldArtist: string, newSongTitle: string, newArtist: string, currentTime?: string): Promise<string> {
     const key = getCacheKey(oldSongTitle, newSongTitle);
     
-    if (introCache.has(key)) {
-        console.log(`[Cache Hit] Using pre-generated intro for ${key}`);
-        return introCache.get(key)!;
-    }
+    // 1. Get Text (Cache or Generate)
+    let textToSpeak: string | null = null;
+    let didGenerate = false;
 
-    console.log(`[Cache Miss] Generating new intro for ${key}`);
-    
-    const generationPromise = (async () => {
+    // Check session storage first
+    const storageResult = await chrome.storage.session.get(key);
+    if (storageResult[key]) {
+        console.log(`[Cache Hit] Using pre-generated intro for ${key} from storage`);
+        textToSpeak = storageResult[key];
+    } else {
+        console.log(`[Cache Miss] Generating new intro for ${key}`);
         try {
             // @ts-ignore
             if (!await chrome.offscreen.hasDocument()) {
@@ -29,20 +33,19 @@ export async function generateRJIntro(oldSongTitle: string, oldArtist: string, n
               });
             }
 
-            const settings = await chrome.storage.sync.get(['modelProvider', 'speechProvider', 'localServerPort', 'geminiApiKey']);
+            const settings = await chrome.storage.sync.get(['modelProvider', 'geminiApiKey', 'localServerPort']);
             const modelProvider = settings.modelProvider || 'gemini-api';
-            const speechProvider = settings.speechProvider || 'gemini-api';
-            const localServerPort = settings.localServerPort || 8008;
             const geminiApiKey = settings.geminiApiKey || '';
+            const localServerPort = settings.localServerPort || 8008;
 
-            const response = await chrome.runtime.sendMessage({
+            textToSpeak = await chrome.runtime.sendMessage({
               type: 'GENERATE_RJ',
               payload: {
                 oldSongTitle,
                 oldArtist,
                 newSongTitle,
                 newArtist,
-                useWebLLM: modelProvider === 'webllm', // fallback for now
+                useWebLLM: modelProvider === 'webllm',
                 modelProvider,
                 geminiApiKey,
                 localServerPort,
@@ -50,35 +53,52 @@ export async function generateRJIntro(oldSongTitle: string, oldArtist: string, n
               }
             });
 
-            // Trigger Audio Preload if using Local Server TTS or Gemini API
-            if ((speechProvider === 'localserver' || speechProvider === 'gemini-api') && response) {
-                 console.log("Triggering Audio Preload for:", response);
-                 chrome.runtime.sendMessage({
-                    type: 'PRELOAD_AUDIO',
-                    payload: {
-                        localServerPort,
-                        textToSpeak: response,
-                        speechProvider,
-                        geminiApiKey
-                    }
-                 });
+            if (textToSpeak) {
+                await chrome.storage.session.set({ [key]: textToSpeak });
+                didGenerate = true;
             }
-
-            return response;
         } catch (err) {
             console.error("RJ Model failed:", err);
+            // Don't return here, let it fall through or handle quietly? 
+            // If failed, we likely have no text.
             return `Stay tuned. We got ${newSongTitle} by ${newArtist} coming up next.`;
         }
-    })();
+    }
 
-    introCache.set(key, generationPromise);
-    
-    // Cleanup cache after 10 minutes to prevent memory leaks.
-    setTimeout(() => {
-        introCache.delete(key);
-    }, 10 * 60 * 1000);
-    
-    return generationPromise;
+    if (!textToSpeak) return `Stay tuned. We got ${newSongTitle} by ${newArtist} coming up next.`;
+
+    // 2. Trigger Preload (Unless we just failed to generate)
+    // We need settings for preload too
+    const settings = await chrome.storage.sync.get(['speechProvider', 'localServerPort', 'geminiApiKey']);
+    const speechProvider = settings.speechProvider || 'gemini-api';
+    const localServerPort = settings.localServerPort || 8008;
+    const geminiApiKey = settings.geminiApiKey || '';
+
+    if (speechProvider === 'localserver' || speechProvider === 'gemini-api' || speechProvider === 'kokoro') {
+            console.log(`[Preload] Triggering Audio Preload for: ${speechProvider} (Generated: ${didGenerate})`);
+            
+            // Ensure offscreen exists (might be needed if cache hit but offscreen died)
+            // @ts-ignore
+            if (!await chrome.offscreen.hasDocument()) {
+                await chrome.offscreen.createDocument({
+                    url: 'offscreen.html',
+                    reasons: [chrome.offscreen.Reason.DOM_PARSER],
+                    justification: 'To use local AI models'
+                });
+            }
+
+            chrome.runtime.sendMessage({
+            type: 'PRELOAD_AUDIO',
+            payload: {
+                localServerPort,
+                textToSpeak: textToSpeak,
+                speechProvider,
+                geminiApiKey
+            }
+            });
+    }
+
+    return textToSpeak;
 }
 
 chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendResponse) => {
@@ -115,11 +135,14 @@ function announceSong(tabId: number, currentSongTitle: string, currentSongArtist
       const localServerPort = settings.localServerPort || 8008;
       const geminiApiKey = settings.geminiApiKey || '';
 
-      if (speechProvider === 'localserver' || speechProvider === 'gemini-api') {
+      console.log(`[Announce] Speech Provider: ${speechProvider}, Local Port: ${localServerPort}`);
+
+      if (speechProvider === 'localserver' || speechProvider === 'gemini-api' || speechProvider === 'kokoro') {
           try {
               // Ensure document exists
                // @ts-ignore
                 if (!await chrome.offscreen.hasDocument()) {
+                    console.log("[Announce] Creating offscreen document...");
                     await chrome.offscreen.createDocument({
                         url: 'offscreen.html',
                         reasons: [chrome.offscreen.Reason.DOM_PARSER],
@@ -130,6 +153,7 @@ function announceSong(tabId: number, currentSongTitle: string, currentSongArtist
               await chrome.runtime.sendMessage({
                   type: 'PLAY_AUDIO',
                   payload: {
+                      tabId,
                       localServerPort,
                       textToSpeak: response,
                       speechProvider,
@@ -139,12 +163,13 @@ function announceSong(tabId: number, currentSongTitle: string, currentSongArtist
               console.log(`${speechProvider} TTS ended`);
               chrome.tabs.sendMessage(tabId, { type: 'TTS_ENDED' });
           } catch (e) {
-              console.error(`Failed to play audio with ${speechProvider}`, e);
+              console.error(`[Announce] Failed to play audio with ${speechProvider}`, e);
               // Fallback to Chrome TTS? Or just fail? Let's fallback.
-              console.log("Falling back to Chrome TTS");
+              console.log("[Announce] Falling back to Chrome TTS");
               speakNative(response, tabId);
           }
       } else {
+          console.log("[Announce] Using native Chrome TTS");
           speakNative(response, tabId);
       }
     });

@@ -316,8 +316,8 @@ function get_status() {
 
     // Pre-warm checking
     const progress = currentSong.currentTime / currentSong.duration;
-    if (progress > 0.5 && !hasPrewarmed && upcomingSong) {
-        log("Song > 50%. Pre-warming RJ model...");
+    if (progress > 0.2 && !hasPrewarmed && upcomingSong) {
+        log("Song > 20%. Pre-warming RJ model...");
         hasPrewarmed = true;
         const message: MessageSchema = {
             type: 'PREWARM_RJ',
@@ -368,9 +368,10 @@ function startPolling() {
 chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendResponse) => {
     if (message.type === 'TTS_ENDED') {
         log("TTS Ended. Resuming playback.");
-        // Only click if it's paused. It should be paused because we paused it.
-        if (isSongPaused() && hasAlertedForCurrentSong) {
-             resumeSong();
+        let count =0;
+        while(isSongPaused() && count<10){
+            resumeSong();
+            count++;
         }
     }
 });

@@ -39,6 +39,14 @@ module.exports = (env) => {
                     { from: 'src/offscreen/offscreen.html', to: 'offscreen.html' },
                     { from: 'manifest.json', to: 'manifest.json' },
                     { from: 'src/icons', to: 'icons' },
+                    { 
+                        from: 'node_modules/@huggingface/transformers/dist/*.wasm', 
+                        to: '[name][ext]' 
+                    },
+                    { 
+                        from: 'node_modules/@huggingface/transformers/dist/*.mjs', 
+                        to: '[name][ext]' 
+                    },
                 ],
             }),
             new webpack.DefinePlugin({

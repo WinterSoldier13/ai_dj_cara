@@ -46,6 +46,7 @@ export type MessageSchema = {
 } | {
     type: 'PLAY_AUDIO';
     payload: {
+        tabId: number;
         audioData?: number[]; // Optional now
         localServerPort?: number;
         textToSpeak: string;

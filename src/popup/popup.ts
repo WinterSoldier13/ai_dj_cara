@@ -18,7 +18,7 @@ chrome.storage.sync.get(['isEnabled', 'isDebugEnabled', 'modelProvider', 'speech
     const isEnabled = result.isEnabled ?? true;
     const isDebugEnabled = result.isDebugEnabled ?? false;
     const modelProvider = result.modelProvider || 'gemini-api';
-    const speechProvider = result.speechProvider || 'gemini-api';
+    const speechProvider = result.speechProvider || 'tts';
     const localServerPort = result.localServerPort || 8008;
     const geminiApiKey = result.geminiApiKey || '';
 
