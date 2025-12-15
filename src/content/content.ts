@@ -24,6 +24,8 @@ const SELECTORS = {
   ARTIST: '.byline'
 } as const
 
+const INDICATOR_ID = 'ai-rj-mode-indicator';
+
 // --- State Variables ---
 
 let hasAlertedForCurrentSong = false;
@@ -53,6 +55,8 @@ function init() {
         isDebug = result.isDebugEnabled ?? false;
         isEnabled = result.isEnabled ?? true;
 
+        updateAIRJModeIndicator();
+
         // Start polling only after we have the initial settings
         startPolling();
     });
@@ -66,11 +70,51 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
         }
         if (changes.isEnabled) {
             isEnabled = changes.isEnabled.newValue;
+            updateAIRJModeIndicator();
         }
     }
 });
 
 // --- Helper Functions ---
+
+function updateAIRJModeIndicator() {
+    const logoAnchor = document.querySelector('a.ytmusic-logo');
+    if (!logoAnchor) return;
+
+    let indicator = document.getElementById(INDICATOR_ID);
+
+    if (isEnabled) {
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = INDICATOR_ID;
+            indicator.innerText = 'AI RJ Mode';
+
+            indicator.style.fontSize = '10px';
+            indicator.style.fontWeight = 'bold';
+            indicator.style.color = '#fff';
+            indicator.style.opacity = '0.7';
+            indicator.style.position = 'absolute';
+            indicator.style.bottom = '-12px';
+            indicator.style.left = '0';
+            indicator.style.width = '100%';
+            indicator.style.textAlign = 'center';
+            indicator.style.pointerEvents = 'none';
+            indicator.style.whiteSpace = 'nowrap';
+            indicator.style.fontFamily = 'Roboto, Noto Naskh Arabic UI, Arial, sans-serif';
+
+            const anchorStyle = window.getComputedStyle(logoAnchor);
+            if (anchorStyle.position === 'static') {
+                 (logoAnchor as HTMLElement).style.position = 'relative';
+            }
+
+            logoAnchor.appendChild(indicator);
+        }
+    } else {
+        if (indicator) {
+            indicator.remove();
+        }
+    }
+}
 
 // Helper to safely get text content from XPath
 function getTextFromXPath(xpath: string, context: Node = document): string {
@@ -242,6 +286,8 @@ export const getNextSongInQueue = (): UpcomingSong | null => {
 
 
 function get_status() {
+    updateAIRJModeIndicator();
+
     // If Chrome extension is disabled
     if (!isEnabled) return;
 
