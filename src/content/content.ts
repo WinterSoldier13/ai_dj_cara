@@ -170,6 +170,8 @@ export const isSongPaused = (): boolean => {
 };
 
 export const resumeSong = (): void => {
+    const media = document.querySelector('video, audio') as HTMLMediaElement | null;
+    media?.play();
     if(!isSongPaused()) return;
     click_play_pause();
 }
@@ -367,7 +369,7 @@ function startPolling() {
 
 chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendResponse) => {
     if (message.type === 'TTS_ENDED') {
-        log("TTS Ended. Resuming playback.");
+        log("TTS Ended. IsSongPaused: ", isSongPaused());
         let count =0;
         while(isSongPaused() && count<10){
             resumeSong();
