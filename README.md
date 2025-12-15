@@ -70,7 +70,7 @@ You can download the compiled version (excluding WebLLM for a smaller file size)
 1.  **Clone the Repository**
 
     ```bash
-    git clone https://github.com/your-repo/ai_dj_cara.git
+    git clone https://github.com/WinterSoldier13/ai_dj_cara.git
     cd ai_dj_cara
     ```
 
