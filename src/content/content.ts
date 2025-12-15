@@ -171,12 +171,16 @@ export const isSongPaused = (): boolean => {
 
 export const resumeSong = (): void => {
     const media = document.querySelector('video, audio') as HTMLMediaElement | null;
+    if(!media?.paused) return;
     media?.play();
     if(!isSongPaused()) return;
     click_play_pause();
 }
 
 export const pauseSong = (): void => {
+    const media = document.querySelector('video, audio') as HTMLMediaElement | null;
+    if(media?.paused) return;
+    media?.pause();
     if(isSongPaused()) return;
     click_play_pause();
 }
