@@ -273,7 +273,7 @@ export const click_play_pause = (): void => {
 
 function getSongInfo(): CurrentSong {
     try {
-        const video = document.querySelector('video');
+        const video = document.querySelector('video, audio') as HTMLMediaElement | null;
         
         // Default values if video isn't loaded yet
         let duration = 0;
@@ -305,6 +305,7 @@ function getSongInfo(): CurrentSong {
             artist = parts[0] || "";
             album = parts[1] || "";
         }
+        console.log("[YTM Scraper] Extracted Song Info:", { title, artist, album, duration, currentTime, isPaused });
 
         return {
             title,
