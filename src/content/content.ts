@@ -367,6 +367,10 @@ function get_status() {
 
     currentSong = getSongInfo();
     upcomingSong = getNextSongInQueue();
+
+    log('Current Song:', currentSong);
+    log('Upcoming Song:', upcomingSong);
+
     if (currentSong.title === '') {
         return;
     }
