@@ -1,37 +1,39 @@
-import { UpcomingSong } from "../utils/types";
+import { UpcomingSong } from "../utils/types"; 
 
-// --- INTERFACES ---
-interface YtmState {
-  queue: {
-    items: any[]; // We only need to know it's an array
-  };
-}
-
-// --- HELPER TO UNWRAP DATA ---
-function getNextSongData() : UpcomingSong | null {
+function getNextSongData(): UpcomingSong | null {
   const queueEl = document.querySelector('ytmusic-player-queue') as any;
-  const queueItems = queueEl?.queue?.store?.getState()?.queue?.items;
+  
+  const store = queueEl?.queue?.store || queueEl?.store;
+  const state = store?.getState ? store.getState() : null;
+  const queueState = state?.queue || state?.player?.queue;
 
-  if (!queueItems) return null;
+  if (!queueState) {
+    console.warn("YTM Injector: Queue state not found.");
+    return null;
+  }
 
-  // Find Current Index based on 'selected: true'
-  let currentIndex = -1;
-  // Unwrap helper
+  const mainItems = queueState.items || [];
+  const automixItems = queueState.automixItems || [];
+  const fullQueue = [...mainItems, ...automixItems];
+
+  if (fullQueue.length === 0) return null;
+
   const unwrap = (item: any) => 
     item.playlistPanelVideoRenderer || 
     item.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer;
 
-  for (let i = 0; i < queueItems.length; i++) {
-    const data = unwrap(queueItems[i]);
+  let currentIndex = -1;
+  for (let i = 0; i < fullQueue.length; i++) {
+    const data = unwrap(fullQueue[i]);
     if (data && data.selected) {
       currentIndex = i;
       break;
     }
   }
 
-  // Get Next Song
-  if (currentIndex !== -1 && currentIndex < queueItems.length - 1) {
-    const nextData = unwrap(queueItems[currentIndex + 1]);
+  if (currentIndex !== -1 && currentIndex < fullQueue.length - 1) {
+    const nextData = unwrap(fullQueue[currentIndex + 1]);
+    
     if (nextData) {
       const byLineRuns = nextData.longBylineText?.runs || [];
       return {
