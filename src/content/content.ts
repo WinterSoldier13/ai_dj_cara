@@ -282,33 +282,64 @@ export const getNextSongInQueue = (): UpcomingSong | null => {
 
     // Determine the current Row (the entire wrapper if it exists, otherwise the item)
     const currentRow = currentItem.closest(SELECTORS.WRAPPER) || currentItem;
-    let nextRow = currentRow.nextElementSibling as HTMLElement;
 
-    // If no sibling, check if we need to cross the "Autoplay" boundary
-    if (!nextRow) {
+    let nextRow: Element | null = currentRow.nextElementSibling;
+    let nextSongItem: HTMLElement | null = null;
+
+    // Helper to extract item from a row (wrapper or item)
+    const extractItemFromRow = (row: Element): HTMLElement | null => {
+        const tagName = row.tagName.toLowerCase();
+        if (tagName === SELECTORS.WRAPPER) {
+            // Traverse #primary-renderer children to find the item
+            // Using querySelector can be brittle with ID descendants in some contexts,
+            // so finding the element directly is safer.
+            const primary = row.querySelector(SELECTORS.PRIMARY_RENDERER);
+            if (primary) {
+                for (let i = 0; i < primary.children.length; i++) {
+                     const child = primary.children[i] as HTMLElement;
+                     if (child.tagName.toLowerCase() === SELECTORS.ITEM) {
+                         return child;
+                     }
+                }
+            }
+        } else if (tagName === SELECTORS.ITEM) {
+            return row as HTMLElement;
+        }
+        return null;
+    }
+
+    // 1. Try to find the next valid song in the current siblings
+    // We iterate because there might be separators (like "Autoplay is on" header) or other non-song elements.
+    while (nextRow) {
+        const item = extractItemFromRow(nextRow);
+        if (item) {
+            nextSongItem = item;
+            break;
+        }
+        nextRow = nextRow.nextElementSibling;
+    }
+
+    // 2. If no song found in current container siblings, check #automix-contents
+    if (!nextSongItem) {
         const contentsContainer = currentRow.closest('#contents');
         if (contentsContainer) {
              const queueContainer = contentsContainer.parentElement; // ytmusic-player-queue
              if (queueContainer) {
                  const automixContainer = queueContainer.querySelector('#automix-contents');
                  if (automixContainer) {
-                     nextRow = automixContainer.firstElementChild as HTMLElement;
+                     // Check children of automix container
+                     let automixChild = automixContainer.firstElementChild;
+                     while (automixChild) {
+                         const item = extractItemFromRow(automixChild);
+                         if (item) {
+                             nextSongItem = item;
+                             break;
+                         }
+                         automixChild = automixChild.nextElementSibling;
+                     }
                  }
              }
         }
-    }
-
-    if (!nextRow) return null;
-
-    // Identify the actual song item in the next row
-    let nextSongItem: HTMLElement | null = null;
-    const tagName = nextRow.tagName.toLowerCase();
-
-    if (tagName === SELECTORS.WRAPPER) {
-      // Must target #primary-renderer to skip the hidden video version (#counterpart-renderer)
-      nextSongItem = nextRow.querySelector(`${SELECTORS.PRIMARY_RENDERER} ${SELECTORS.ITEM}`);
-    } else if (tagName === SELECTORS.ITEM) {
-      nextSongItem = nextRow;
     }
 
     if (!nextSongItem) return null;
@@ -336,6 +367,10 @@ function get_status() {
 
     currentSong = getSongInfo();
     upcomingSong = getNextSongInQueue();
+
+    log('Current Song:', currentSong);
+    log('Upcoming Song:', upcomingSong);
+
     if (currentSong.title === '') {
         return;
     }
