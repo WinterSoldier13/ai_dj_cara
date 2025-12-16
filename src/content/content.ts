@@ -545,7 +545,8 @@ chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendRespon
         log("TTS Ended. Attempting to resume song.");
         // Only resume if we are currently paused.
         if (isSongPaused()) {
-            resumeSong();
+            document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+            // resumeSong();
         } else {
             log("TTS Ended, but song is already playing. Skipping resume.");
         }
