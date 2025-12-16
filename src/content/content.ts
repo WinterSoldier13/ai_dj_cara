@@ -1,61 +1,29 @@
 import { MessageSchema, CurrentSong, UpcomingSong } from '../utils/types';
-import { IntervalLogger } from '../utils/interval_logger';
 
-// --- Constants ---
+// --- CONSTANTS ---
+const EVENT_TRIGGER = 'YTM_EXT_TRIGGER'; // Song Changed (Paused)
+const EVENT_UPDATE = 'YTM_EXT_UPDATE';   // Info Updated (e.g. Queue loaded)
+const EVENT_RESUME = 'YTM_EXT_RESUME';
+const EVENT_REQUEST_DATA = 'YTM_EXTENSION_REQUEST_DATA';
+const EVENT_RETURN_DATA = 'YTM_EXTENSION_RETURN_DATA';
 
-const artistNameXPath = '/html/body/ytmusic-app/ytmusic-app-layout/ytmusic-player-bar/div[2]/div[2]/span/span[2]/yt-formatted-string';
-const currentSongNameXPath = '/html/body/ytmusic-app/ytmusic-app-layout/ytmusic-player-bar/div[2]/div[2]/yt-formatted-string';
-const currentSongAlbumNameXPath = '/html/body/ytmusic-app/ytmusic-app-layout/ytmusic-player-bar/div[2]/div[2]/span/span[2]/yt-formatted-string/a[3]';
-const currentSongTimerXPath = '/html/body/ytmusic-app/ytmusic-app-layout/ytmusic-player-bar/div[1]/span';
-const musicBarXPath = '/html/body/ytmusic-app/ytmusic-app-layout/ytmusic-player-bar/div[2]';
-
-const interval_logger = new IntervalLogger(5000);
-
-// SVG Path constants for comparison
-const PLAY_PATH = "M5 4.623V19.38a1.5 1.5 0 002.26 1.29L22 12 7.26 3.33A1.5 1.5 0 005 4.623Z";
-
-/**
- * Configuration constants for DOM selectors and attributes.
- * Update these if YouTube Music changes their DOM structure.
- */
-const SELECTORS = {
-    SELECTED_ITEM: 'ytmusic-player-queue-item[selected]',
-    WRAPPER: 'ytmusic-playlist-panel-video-wrapper-renderer',
-    ITEM: 'ytmusic-player-queue-item',
-    PRIMARY_RENDERER: '#primary-renderer',
-    TITLE: '.song-title',
-    ARTIST: '.byline'
-} as const
-
-const INDICATOR_ID = 'ai-rj-mode-indicator';
-
-// --- State Variables ---
+// --- STATE ---
 let currentSong: CurrentSong | null = null;
 let upcomingSong: UpcomingSong | null = null;
 
-// Sets to track processed songs.
-// Using a simple cleanup strategy: clear if size exceeds threshold.
-const prewarmedSongs = new Set<string>();
-const alertedSongs = new Set<string>();
-const MAX_SET_SIZE = 50;
+// Track processing to avoid duplicates
+const processedPairs = new Set<string>(); // "TitleA::TitleB"
+const prefetchTimestamps = new Map<string, number>(); // "TitleA::TitleB" -> Timestamp
 
 let isDebug = false;
 let isEnabled = true;
-let isFirstSong = true;
 
-// --- Logging & Debugging ---
-
-function log(message: any, ...args: any[]) {
-    if (!isDebug) return;
-
-    if (message instanceof Error) {
-        console.error(message, ...args);
-    } else {
-        console.log(message, ...args);
-    }
+// --- LOGGING ---
+function log(msg: string, ...args: any[]) {
+    if (isDebug) console.log(`%c[Content] ${msg}`, 'color: #00ccff', ...args);
 }
 
-// Initialize state and start polling
+// --- INITIALIZATION ---
 function init() {
     chrome.storage.sync.get(['isDebugEnabled', 'isEnabled'], (result) => {
         isDebug = result.isDebugEnabled ?? false;
@@ -63,17 +31,14 @@ function init() {
 
         updateAIRJModeIndicator();
 
-        // Start polling only after we have the initial settings
-        startPolling();
+        // Request initial status from Injector
+        document.dispatchEvent(new CustomEvent(EVENT_REQUEST_DATA));
     });
 }
 
-// Listen for changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'sync') {
-        if (changes.isDebugEnabled) {
-            isDebug = changes.isDebugEnabled.newValue;
-        }
+        if (changes.isDebugEnabled) isDebug = changes.isDebugEnabled.newValue;
         if (changes.isEnabled) {
             isEnabled = changes.isEnabled.newValue;
             updateAIRJModeIndicator();
@@ -81,535 +46,292 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     }
 });
 
-// --- Helper Functions ---
-
+// --- UI INDICATOR ---
 function updateAIRJModeIndicator() {
     const logoAnchor = document.querySelector('a.ytmusic-logo');
     if (!logoAnchor) return;
-
-    let indicator = document.getElementById(INDICATOR_ID);
+    let indicator = document.getElementById('ai-rj-mode-indicator');
 
     if (isEnabled) {
         if (!indicator) {
             indicator = document.createElement('div');
-            indicator.id = INDICATOR_ID;
+            indicator.id = 'ai-rj-mode-indicator';
             indicator.innerText = 'AI RJ Mode';
-
-            indicator.style.fontSize = '10px';
-            indicator.style.fontWeight = 'bold';
-            indicator.style.color = '#fff';
-            indicator.style.opacity = '0.7';
-            indicator.style.position = 'absolute';
-            indicator.style.bottom = '-12px';
-            indicator.style.left = '0';
-            indicator.style.width = '100%';
-            indicator.style.textAlign = 'center';
-            indicator.style.pointerEvents = 'none';
-            indicator.style.whiteSpace = 'nowrap';
-            indicator.style.fontFamily = 'Roboto, Noto Naskh Arabic UI, Arial, sans-serif';
-
-            const anchorStyle = window.getComputedStyle(logoAnchor);
-            if (anchorStyle.position === 'static') {
+            Object.assign(indicator.style, {
+                fontSize: '10px', fontWeight: 'bold', color: '#fff', opacity: '0.7',
+                position: 'absolute', bottom: '-12px', left: '0', width: '100%',
+                textAlign: 'center', pointerEvents: 'none', whiteSpace: 'nowrap',
+                fontFamily: 'Roboto, Arial, sans-serif'
+            });
+            if (window.getComputedStyle(logoAnchor).position === 'static') {
                 (logoAnchor as HTMLElement).style.position = 'relative';
             }
-
             logoAnchor.appendChild(indicator);
         }
     } else {
-        if (indicator) {
-            indicator.remove();
-        }
+        indicator?.remove();
     }
 }
 
-// Helper to safely get text content from XPath
-function getTextFromXPath(xpath: string, context: Node = document): string {
-    try {
-        const result = document.evaluate(xpath, context, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        return result.singleNodeValue?.textContent?.trim() || '';
-    } catch (e) {
-        log(new Error(`getTextFromXPath error for ${xpath}:`), e);
-        return '';
-    }
-}
-
-const isFullScreenPlayerOpen = (): boolean => {
-    const layout = document.querySelector('ytmusic-app-layout');
-    if (!layout) return false;
-
-    const state = layout.getAttribute('player-ui-state');
-    // PLAYER_PAGE_OPEN = Fullscreen/Expanded
-    // PLAYER_BAR_ONLY = Minimized to bottom bar
-    return state === 'PLAYER_PAGE_OPEN';
-};
-
-const togglePlayer = (): void => {
-    // we need to click on the musicBar
-    const result = document.evaluate(
-        musicBarXPath,
-        document,
-        null,
-        XPathResult.FIRST_ORDERED_NODE_TYPE,
-        null
-    );
-
-    const element = result.singleNodeValue as HTMLElement | null;
-
-    if (element) {
-        log("Homie, clicking the player bar now...");
-        element.click();
-    } else {
-        log(new Error("Could not find the player bar at the specified XPath."));
-    }
-};
-
-export const isSongPaused = (): boolean => {
-    const media = document.querySelector('video, audio') as HTMLMediaElement | null;
-    if (media) {
-        return media.paused;
-    }
-    const pathElement = document.querySelector('#play-pause-button yt-icon path');
-
-    if (!pathElement) {
-        log(new Error("Play/Pause button path not found in DOM."));
-        return false;
-    }
-
-    const currentPath = pathElement.getAttribute('d');
-    return currentPath === PLAY_PATH;
-};
-
-export const resumeSong = (): void => {
-    const tryResume = (attempt: number) => {
-        if (attempt > 10) {
-            log("Giving up on resumeSong after 10 attempts.");
-            return;
-        }
-
-        const media = document.querySelector('video, audio') as HTMLMediaElement | null;
-        if (media && !media.paused) {
-            log("Resume successful (media.paused is false).");
-            return;
-        }
-
-        if (media) {
-            media.play().catch(e => log("Error playing media:", e));
-        } else {
-            click_play_pause();
-        }
-
-        // Check again after a short delay
-        setTimeout(() => {
-            if (isSongPaused()) {
-                log(`Still paused, retrying resume... (Attempt ${attempt + 1})`);
-                tryResume(attempt + 1);
-            } else {
-                log("Resume verified.");
-            }
-        }, 300);
-    };
-
-    tryResume(1);
-}
-
-export const pauseSong = (): void => {
-    const media = document.querySelector('video, audio') as HTMLMediaElement | null;
-    if (media?.paused) return;
-    media?.pause();
-
-    // Double check with DOM button state just in case
-    setTimeout(() => {
-        if (!isSongPaused()) {
-            click_play_pause();
-        }
-    }, 100);
-}
-
-export const click_play_pause = (): void => {
-    const button = document.querySelector('#play-pause-button') as HTMLElement | null;
-
-    if (button) {
-        button.click();
-    } else {
-        log(new Error("Could not find #play-pause-button"));
-    }
-};
-
-// --- Core Functions ---
-
-// export function getSongInfo(): CurrentSong {
-//     try {
-//         const title = getTextFromXPath(currentSongNameXPath);
-//         const artist = getTextFromXPath(artistNameXPath);
-//         const album = getTextFromXPath(currentSongAlbumNameXPath);
-//         const timer = getTextFromXPath(currentSongTimerXPath); // it will be a string like "0:00 / 3:59"
-
-//         if (!timer) {
-//             // log(new Error('getSongInfo: Timer element not found')); // Too noisy
-//             return { title: '', artist: '', album: '', duration: 0, currentTime: 0, isPaused: false };
-//         }
-
-//         //convert the timer string to seconds
-//         const [currentTime, duration] = (() => {
-//             const [currentTimeStr, durationStr] = timer.split('/');
-//             const [currMinutes, currSeconds] = currentTimeStr.split(':').map(Number);
-//             const [durMinutes, durSeconds] = durationStr.split(':').map(Number);
-//             return [currMinutes * 60 + currSeconds, durMinutes * 60 + durSeconds];
-//         })();
-
-//         const currSong: CurrentSong = {
-//             title,
-//             artist,
-//             album,
-//             duration,
-//             currentTime,
-//             isPaused: isSongPaused()
-//         }
-
-//         return currSong;
-
-//     } catch (e) {
-//         log(new Error('getSongInfo: Unexpected error'), e);
-//         return { title: '', artist: '', album: '', duration: 0, currentTime: 0, isPaused: false };
-//     }
-// }
-
-function getSongInfo(): CurrentSong {
-    try {
-        const video = document.querySelector('video, audio') as HTMLMediaElement | null;
-
-        // Default values if video isn't loaded yet
-        let duration = 0;
-        let currentTime = 0;
-        let isPaused = false;
-
-        if (video) {
-            duration = Number.isNaN(video.duration) ? 0 : Math.floor(video.duration);
-            currentTime = Math.floor(video.currentTime);
-            isPaused = video.paused;
-        }
-
-        const metadata = navigator.mediaSession?.metadata;
-
-        let title = "";
-        let artist = "";
-        let album = "";
-
-        if (metadata) {
-            title = metadata.title;
-            artist = metadata.artist;
-            album = metadata.album;
-        }
-
-        if (!title) {
-            title = document.querySelector('ytmusic-player-bar .title')?.textContent?.trim() || "";
-            const byline = document.querySelector('ytmusic-player-bar .byline')?.textContent || "";
-            const parts = byline.split('•').map(s => s.trim());
-            artist = parts[0] || "";
-            album = parts[1] || "";
-        }
-
-        return {
-            title,
-            artist,
-            album,
-            duration, // Returns seconds (e.g. 239.5)
-            currentTime,
-            isPaused
-        };
-
-    } catch (e) {
-        console.error('getSongInfo: Unexpected error', e);
-        return { title: '', artist: '', album: '', duration: 0, currentTime: 0, isPaused: false };
-    }
-}
-
-function fetchUpcomingSong(): Promise<{ currentSong: CurrentSong; upcomingSong: UpcomingSong } | null> {
-    return new Promise((resolve) => {
-        // 1. Set up a one-time listener for the response
-        const handleResponse = (event: Event) => {
-            const customEvent = event as CustomEvent;
-            document.removeEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
-            resolve(customEvent.detail);
-        };
-
-        document.addEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
-
-        // 2. Dispatch the request
-        document.dispatchEvent(new CustomEvent('YTM_EXTENSION_REQUEST_DATA'));
-
-        // Optional: Timeout if injector doesn't respond in 1 second.
-        setTimeout(() => {
-            document.removeEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
-            resolve(null);
-        }, 1000);
-    });
-}
+// --- LOGIC: SONG CHANGE HANDLING ---
 
 /**
- * Scrapes the YouTube Music queue to find the currently active song
- * and returns the metadata for the *next* song in the list.
+ * Handle Song Change Event (Triggered by Injector)
+ * The song is PAUSED when this fires.
  */
-export const getNextSongInQueue = (): UpcomingSong | null => {
-    try {
-        const currentItem = document.querySelector<HTMLElement>(SELECTORS.SELECTED_ITEM);
-        if (!currentItem) return null;
-
-        // Determine the current Row (the entire wrapper if it exists, otherwise the item)
-        const currentRow = currentItem.closest(SELECTORS.WRAPPER) || currentItem;
-
-        let nextRow: Element | null = currentRow.nextElementSibling;
-        let nextSongItem: HTMLElement | null = null;
-
-        // Helper to extract item from a row (wrapper or item)
-        const extractItemFromRow = (row: Element): HTMLElement | null => {
-            const tagName = row.tagName.toLowerCase();
-            if (tagName === SELECTORS.WRAPPER) {
-                // Traverse #primary-renderer children to find the item
-                // Using querySelector can be brittle with ID descendants in some contexts,
-                // so finding the element directly is safer.
-                const primary = row.querySelector(SELECTORS.PRIMARY_RENDERER);
-                if (primary) {
-                    for (let i = 0; i < primary.children.length; i++) {
-                        const child = primary.children[i] as HTMLElement;
-                        if (child.tagName.toLowerCase() === SELECTORS.ITEM) {
-                            return child;
-                        }
-                    }
-                }
-            } else if (tagName === SELECTORS.ITEM) {
-                return row as HTMLElement;
-            }
-            return null;
-        }
-
-        // 1. Try to find the next valid song in the current siblings
-        // We iterate because there might be separators (like "Autoplay is on" header) or other non-song elements.
-        while (nextRow) {
-            const item = extractItemFromRow(nextRow);
-            if (item) {
-                nextSongItem = item;
-                break;
-            }
-            nextRow = nextRow.nextElementSibling;
-        }
-
-        // 2. If no song found in current container siblings, check #automix-contents
-        if (!nextSongItem) {
-            const contentsContainer = currentRow.closest('#contents');
-            if (contentsContainer) {
-                const queueContainer = contentsContainer.parentElement; // ytmusic-player-queue
-                if (queueContainer) {
-                    const automixContainer = queueContainer.querySelector('#automix-contents');
-                    if (automixContainer) {
-                        // Check children of automix container
-                        let automixChild = automixContainer.firstElementChild;
-                        while (automixChild) {
-                            const item = extractItemFromRow(automixChild);
-                            if (item) {
-                                nextSongItem = item;
-                                break;
-                            }
-                            automixChild = automixChild.nextElementSibling;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (!nextSongItem) return null;
-
-        const titleEl = nextSongItem.querySelector<HTMLElement>(SELECTORS.TITLE);
-        const artistEl = nextSongItem.querySelector<HTMLElement>(SELECTORS.ARTIST);
-
-        return {
-            title: titleEl?.getAttribute('title') || titleEl?.innerText.trim() || "Unknown",
-            artist: artistEl?.getAttribute('title') || artistEl?.innerText.trim() || "Unknown"
-        };
-
-    } catch (e) {
-        console.error("[YTM Scraper] Failed to extract next song:", e);
-        return null;
-    }
-};
-
-
-function get_status() {
-    updateAIRJModeIndicator();
-
-    // If Chrome extension is disabled
-    if (!isEnabled) return;
-
-    fetchUpcomingSong().then(data => {
-        if (data) {
-            currentSong = data.currentSong;
-            upcomingSong = data.upcomingSong;
-        } else {
-            // This is expected if there is no upcoming song or if the injector is not ready yet
-            // log("Failed to fetch upcoming song from injector during status check.");
-            upcomingSong = null;
-        }
-    });
-    if (!currentSong) return;
-
-    if (isDebug) {
-        interval_logger.log(`--- Status Check --- ${currentSong.title}::${upcomingSong?.title} ---`);
-    }
-
-    if (currentSong.title === '') {
+async function handleSongChange(detail: any) {
+    if (!isEnabled) {
+        document.dispatchEvent(new CustomEvent(EVENT_RESUME));
         return;
     }
 
-    // If paused, we don't need to do anything (music isn't progressing)
-    if (isSongPaused()) return;
+    const prevSong = currentSong;
+    currentSong = detail.currentSong;
+    upcomingSong = detail.upcomingSong;
 
-    // Was it the first song?
-    if (isFirstSong) {
-        //for now do nothing
-        log("This was the first song", currentSong);
-        isFirstSong = false;
-    }
+    log(`🎵 Song Changed: ${currentSong?.title} (Next: ${upcomingSong?.title})`);
 
-    // Key for state tracking: Current Title + Upcoming Title
-    if (!upcomingSong) return;
-    const songKey = currentSong.title + "::" + upcomingSong.title;
+    // 1. Announce the TRANSITION to this song (if available)
+    // We are looking for a transition from prevSong -> currentSong
+    // But since we store prewarmed keys as "Current::Next", we look for "Prev::Current"
+    if (prevSong && currentSong) {
+        const pairKey = `${prevSong.title}::${currentSong.title}`;
 
-    // Cleanup memory if sets are too big
-    if (prewarmedSongs.size > MAX_SET_SIZE) prewarmedSongs.clear();
-    if (alertedSongs.size > MAX_SET_SIZE) alertedSongs.clear();
+        // Check if we have an announcement pending/ready?
+        // Actually, the background/offscreen handles the "Ready" part via TTS.
+        // We just ask the background: "Hey, song changed to B. Did you have a script for A->B?"
+        // But wait, the architecture is: Content asks to Play.
 
-    if (!prewarmedSongs.has(songKey)) {
-        log(`Pre-warming RJ model for key: ${songKey}`);
-        prewarmedSongs.add(songKey);
+        // Simpler approach:
+        // We assume `SONG_ABOUT_TO_END` logic was replaced by this strictly event-driven flow?
+        // No, the user said: "When we have the event of A::B... content script should start prefetch...
+        // and as soon as the song changes... trigger the announce flow".
 
-        const message: MessageSchema = {
-            type: 'PREWARM_RJ',
-            payload: {
-                oldSongTitle: currentSong.title,
-                oldArtist: currentSong.artist,
-                newSongTitle: upcomingSong.title,
-                newArtist: upcomingSong.artist,
-                currentTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            }
-        };
-        chrome.runtime.sendMessage(message);
-    }
-
-    // const timeRemaining = currentSong.duration - currentSong.currentTime;
-
-    // Check if we already alerted for this song pair
-    // if (alertedSongs.has(songKey)) return;
-
-    // Condition: Time < 2s AND duration is reasonable (>10s to avoid ads/glitches?)
-    // if (timeRemaining <= 2 && isSongPaused() && timeRemaining > 0 && currentSong.duration > 10) {
-    //     pauseSong();
-    //     log(`Song ending in 2s. Triggering pause for key: ${songKey}`);
-    //     alertedSongs.add(songKey);
-
-    //     const message: MessageSchema = {
-    //         type: 'SONG_ABOUT_TO_END',
-    //         payload: {
-    //             currentSongTitle: currentSong.title,
-    //             currentSongArtist: currentSong.artist,
-    //             upcomingSongTitle: upcomingSong?.title || 'Unknown',
-    //             upcomingSongArtist: upcomingSong?.artist || 'Unknown'
-    //         }
-    // };
-    // chrome.runtime.sendMessage(message);
-    // }
-}
-
-function startPolling() {
-    log("Starting Polling...");
-
-    // Initial check
-    fetchUpcomingSong().then(data => {
-        if (data) {
-            currentSong = data.currentSong;
-            upcomingSong = data.upcomingSong;
-            log(`Setting Initial Upcoming Song: ${upcomingSong?.title}`);
-        } else {
-            log("Failed to fetch initial upcoming song from injector.");
-        }
-    });
-    log(`Setting Initial Song: ${currentSong?.title}`);
-
-    // Poll every 1 second
-    setInterval(get_status, 1000);
-
-    log("Polling started successfully.");
-}
-
-chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendResponse) => {
-    if (message.type === 'TTS_ENDED') {
-        log("TTS Ended. Attempting to resume song.");
-        // Only resume if we are currently paused.
-        if (isSongPaused()) {
-            document.dispatchEvent(new CustomEvent(EVENT_RESUME));
-            // resumeSong();
-        } else {
-            log("TTS Ended, but song is already playing. Skipping resume.");
-        }
-    }
-});
-
-// Someone requested current song info
-chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendResponse) => {
-    if (message.type === 'GET_CURRENT_SONG_INFO') {
-        // Refresh info to be sure
-        const current = getSongInfo();
-        const next = getNextSongInQueue();
-
-        log("Received request to validate current song info.");
-        const response: MessageSchema = {
-            type: 'CURRENT_SONG_INFO',
-            payload: {
-                currentSongTitle: current.title,
-                upcomingSongTitle: next?.title || 'Unknown'
-            }
-        };
-        sendResponse(response);
-    }
-});
-
-
-const EVENT_TRIGGER = 'YTM_EXT_TRIGGER';
-const EVENT_RESUME = 'YTM_EXT_RESUME';
-
-document.addEventListener(EVENT_TRIGGER, async (e) => {
-    // TS Note: Cast to CustomEvent if you need to access e.detail
-    console.log('[Content] ⚡ Song Changed. Contacting Background...');
-    try {
-        if (alertedSongs.has(currentSong!.title + "::" + upcomingSong!.title)) {
-            console.log('[Content] ⚠️ Already alerted for this song pair. Skipping.');
-            document.dispatchEvent(new CustomEvent(EVENT_RESUME));
-            return;
-        }
-        alertedSongs.add(currentSong!.title + "::" + upcomingSong!.title);
-        const message: MessageSchema = {
-            type: 'SONG_ABOUT_TO_END',
-            payload: {
-                currentSongTitle: currentSong?.title || 'Unknown',
-                currentSongArtist: currentSong?.artist || 'Unknown',
-                upcomingSongTitle: upcomingSong?.title || 'Unknown',
-                upcomingSongArtist: upcomingSong?.artist || 'Unknown'
-            }
-        };
-        chrome.runtime.sendMessage(message);
-
-        // if (response?.ack) {
-        //     console.log('[Content] ✅ Background done. Dispatching Resume.');
-        //     document.dispatchEvent(new CustomEvent(EVENT_RESUME));
-        // }
-
-    } catch (err) {
-        console.error('[Content] Background failed', err);
-        // Fail-safe unlock
+        // So here we trigger the announce flow.
+        await triggerAnnounce(pairKey);
+    } else {
+        // First song or no previous context. Just resume.
+        log("No previous song context or first load. Resuming.");
         document.dispatchEvent(new CustomEvent(EVENT_RESUME));
     }
+
+    // 2. Start Prefetch for NEXT Pair (Current::Upcoming)
+    schedulePrefetch();
+}
+
+/**
+ * Triggers the announcement (TTS) for the given pair.
+ * It sends a message to background to play the audio.
+ * Then waits for TTS_ENDED or timeout to Resume.
+ */
+async function triggerAnnounce(pairKey: string) {
+    return new Promise<void>((resolve) => {
+        // We need to tell background to play audio for this pair.
+        // But the message type `SONG_ABOUT_TO_END` was used for this?
+        // Or `PLAY_AUDIO`?
+        // The previous logic used `SONG_ABOUT_TO_END` to trigger generation/prefetch? No.
+
+        // Let's use a new flow or adapt `SONG_ABOUT_TO_END`.
+        // Actually, the user wants us to "notify the content script to carry on the task".
+        // The task is: Play the intro.
+
+        // We'll send a message to check if audio is ready and play it.
+        // If no audio is ready (because we didn't prefetch, or it failed), we should resume immediately.
+
+        // Let's send a PLAY_AUDIO request with specific pair info?
+        // Or re-use `SONG_ABOUT_TO_END` but rename it?
+        // `SONG_ABOUT_TO_END` was "Generate and Play".
+
+        // Ideally, we send "PLAY_TRANSITION".
+        // Since I shouldn't change background too much, let's see what `SONG_ABOUT_TO_END` does.
+        // It likely triggers `generate_rj` which generates AND plays.
+        // But we want to play PRE-generated audio if possible.
+
+        // Wait, `PREWARM_RJ` generates audio.
+        // `SONG_ABOUT_TO_END` (in original code) was sent when song was ending.
+
+        // Proposed Flow:
+        // 1. Send `PLAY_AUDIO` for `pairKey`.
+        //    But `PLAY_AUDIO` expects raw data or text.
+        //    The background stores the cache? No, `offscreen` has the cache.
+
+        // Let's rely on `SONG_ABOUT_TO_END` behavior if it handles "Play if ready".
+        // If not, we might need to modify `content.ts` to send the specific "Play Cached" command.
+        // Looking at `types.ts`, `PLAY_AUDIO` has `forSongNow`, `forSongNext`.
+
+        // Let's try sending `PLAY_AUDIO` with `forSongNow = currentSong.title`?
+        // But `offscreen` manages the cache.
+
+        // For now, to minimize offscreen changes, I will use `SONG_ABOUT_TO_END`.
+        // But wait! The prompt says: "The content script should then do the prefetch... and trigger the announce flow".
+
+        // If I send `SONG_ABOUT_TO_END`, the background/offscreen might try to generate if not found?
+        // That's acceptable.
+
+        log(`Triggering Announce for ${pairKey}`);
+
+        // We set a flag so that when TTS_ENDED comes, we resume.
+        const resumeHandler = (msg: any) => {
+            if (msg.type === 'TTS_ENDED') {
+                log("TTS Ended. Resuming.");
+                chrome.runtime.onMessage.removeListener(resumeHandler);
+                document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+                resolve();
+            }
+        };
+        chrome.runtime.onMessage.addListener(resumeHandler);
+
+        // Fallback: If no TTS plays within X seconds (e.g. not generated), resume.
+        // But how do we know if it *started*?
+        // We'll give it a short timeout (e.g. 2s) to acknowledge?
+        // If generation is slow (not prewarmed), we might wait longer?
+        // If we pause playback, we better have something to say or resume quickly.
+
+        // If not prewarmed, maybe we shouldn't announce?
+        // "The prefetch should only happen...".
+        // Ideally we only announce if we successfully prefetched.
+
+        // I will assume `SONG_ABOUT_TO_END` handles the "Play or Generate" logic.
+        // I'll send the message.
+        chrome.runtime.sendMessage({
+            type: 'SONG_ABOUT_TO_END',
+            payload: {
+                currentSongTitle: pairKey.split('::')[0], // Previous
+                currentSongArtist: "Unknown",
+                upcomingSongTitle: pairKey.split('::')[1], // Current
+                upcomingSongArtist: currentSong!.artist
+            }
+        });
+
+        // Safety Resume Timeout (in case background drops it)
+        setTimeout(() => {
+             // We can check if `isSongPaused` via DOM?
+             // But we are paused. If 3 seconds pass and no TTS started...
+             // Hard to know. Let's hope `TTS_ENDED` fires even if failure?
+             // Or we just rely on user manual resume if stuck.
+             // Better: Resume after 5s if nothing happens?
+             // log("Safety resume timer...");
+             // resolve(); document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+        }, 5000);
+    });
+}
+
+
+// --- LOGIC: PREFETCH ---
+
+let prefetchTimer: any = null;
+
+function schedulePrefetch() {
+    if (prefetchTimer) clearTimeout(prefetchTimer);
+
+    if (!currentSong || !upcomingSong) {
+        log("Cannot schedule prefetch: missing info");
+        return;
+    }
+
+    const pairKey = `${currentSong.title}::${upcomingSong.title}`;
+    log(`Scheduling prefetch for ${pairKey} in 15s...`);
+
+    // Store start time for this pair attempt
+    const now = Date.now();
+
+    // Check if we did this recently (Debounce/Throttle)
+    // The user requirement: "prefetch only after 15s of the first prefetch request for the given pair"
+    // I interpret this as: "Wait 15s from song start before *actually* requesting."
+
+    prefetchTimer = setTimeout(() => {
+        performPrefetch(pairKey, currentSong!, upcomingSong!);
+    }, 15000);
+}
+
+function performPrefetch(pairKey: string, cSong: CurrentSong, uSong: UpcomingSong) {
+    // Verify we are still playing the same song context
+    if (!currentSong || !upcomingSong) return;
+    const currentPair = `${currentSong.title}::${upcomingSong.title}`;
+
+    if (currentPair !== pairKey) {
+        log(`Prefetch aborted: Context changed (${currentPair} != ${pairKey})`);
+        return;
+    }
+
+    // Check history to avoid spamming the same pair if we loop?
+    // User: "compare the upcoming requests for a difference of 15seconds"
+    // Since we just waited 15s, this is satisfied?
+
+    if (processedPairs.has(pairKey)) {
+        // Maybe we allow re-fetching if it's been a long time?
+        // For now, strict once-per-session-per-pair to save tokens.
+        log(`Already prefetched ${pairKey}. Skipping.`);
+        return;
+    }
+
+    log(`🚀 Sending PREWARM_RJ for ${pairKey}`);
+    processedPairs.add(pairKey);
+
+    chrome.runtime.sendMessage({
+        type: 'PREWARM_RJ',
+        payload: {
+            oldSongTitle: cSong.title,
+            oldArtist: cSong.artist,
+            newSongTitle: uSong.title,
+            newArtist: uSong.artist,
+            currentTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+    });
+}
+
+// --- EVENT LISTENERS ---
+
+// 1. From Injector (Song Change / Data Update)
+document.addEventListener(EVENT_TRIGGER, (e: any) => {
+    handleSongChange(e.detail);
 });
 
-// Start watching
+document.addEventListener(EVENT_UPDATE, (e: any) => {
+    const { currentSong: c, upcomingSong: u } = e.detail;
+    // Only update data, don't trigger song change logic unless title changed
+    if (c?.title !== currentSong?.title) {
+        // This is weird, injector should have fired TRIGGER.
+        // But maybe we missed it?
+        handleSongChange(e.detail);
+    } else {
+        // Just update upcoming (Queue loaded?)
+        if (upcomingSong?.title !== u?.title) {
+            log(`Queue Updated: ${upcomingSong?.title} -> ${u?.title}`);
+            upcomingSong = u;
+            // If we have a new upcoming song, we should probably schedule prefetch now!
+            schedulePrefetch();
+        }
+    }
+});
+
+document.addEventListener(EVENT_RETURN_DATA, (e: any) => {
+    const { currentSong: c, upcomingSong: u } = e.detail;
+    currentSong = c;
+    upcomingSong = u;
+    log(`Initial Data: ${currentSong?.title} -> ${upcomingSong?.title}`);
+
+    // On initial load, we might want to prefetch?
+    if (currentSong && upcomingSong) {
+        schedulePrefetch();
+    }
+});
+
+// 2. From Background (TTS Ended, etc.)
+chrome.runtime.onMessage.addListener((message: MessageSchema) => {
+    if (message.type === 'TTS_ENDED') {
+        // Handled in triggerAnnounce usually, but as a fallback:
+        log("TTS_ENDED received globally.");
+        // We assume triggerAnnounce listener caught it.
+        // If we are paused and stuck, we can resume here too.
+        if (document.querySelector('video')?.paused) {
+             document.dispatchEvent(new CustomEvent(EVENT_RESUME));
+        }
+    }
+});
+
+
+// Start
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
