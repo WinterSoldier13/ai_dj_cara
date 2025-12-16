@@ -45,11 +45,11 @@ function getNextSongData() : UpcomingSong | null {
 
 // --- LISTENER ---
 // Listen for the specific request from the Content Script
-window.addEventListener('YTM_EXTENSION_REQUEST_DATA', () => {
+document.addEventListener('YTM_EXTENSION_REQUEST_DATA', () => {
   const data = getNextSongData();
   
   // Dispatch the response back
-  window.dispatchEvent(new CustomEvent('YTM_EXTENSION_RETURN_DATA', {
+  document.dispatchEvent(new CustomEvent('YTM_EXTENSION_RETURN_DATA', {
     detail: data
   }));
 });

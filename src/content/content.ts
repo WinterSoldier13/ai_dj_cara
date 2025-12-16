@@ -321,23 +321,23 @@ function getSongInfo(): CurrentSong {
     }
 }
 
-function fetchUpcomingSong(): Promise<{ upcomingSong: UpcomingSong} | null> {
+function fetchUpcomingSong(): Promise<UpcomingSong | null> {
   return new Promise((resolve) => {
     // 1. Set up a one-time listener for the response
     const handleResponse = (event: Event) => {
       const customEvent = event as CustomEvent;
-      window.removeEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
+      document.removeEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
       resolve(customEvent.detail);
     };
 
-    window.addEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
+    document.addEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
 
     // 2. Dispatch the request
-    window.dispatchEvent(new CustomEvent('YTM_EXTENSION_REQUEST_DATA'));
+    document.dispatchEvent(new CustomEvent('YTM_EXTENSION_REQUEST_DATA'));
     
     // Optional: Timeout if injector doesn't respond in 1 second.
     setTimeout(() => {
-      window.removeEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
+      document.removeEventListener('YTM_EXTENSION_RETURN_DATA', handleResponse);
       resolve(null);
     }, 1000);
   });
@@ -441,9 +441,11 @@ function get_status() {
     // upcomingSong = getNextSongInQueue();
     fetchUpcomingSong().then(data => {
         if (data) {
-            upcomingSong = data.upcomingSong;
+            upcomingSong = data;
         } else {
-            log("Failed to fetch upcoming song from injector during status check.");
+            // This is expected if there is no upcoming song or if the injector is not ready yet
+            // log("Failed to fetch upcoming song from injector during status check.");
+            upcomingSong = null;
         }
     });
 
@@ -525,7 +527,7 @@ function startPolling() {
     // upcomingSong = getNextSongInQueue();
     fetchUpcomingSong().then(data => {
         if (data) {
-            upcomingSong = data.upcomingSong;
+            upcomingSong = data;
             log(`Setting Initial Upcoming Song: ${upcomingSong?.title}`);
         } else {
             log("Failed to fetch initial upcoming song from injector.");
