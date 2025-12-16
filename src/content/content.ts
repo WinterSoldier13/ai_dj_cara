@@ -301,14 +301,14 @@ function get_status() {
     // If Chrome extension is disabled
     if (!isEnabled) return;
 
-    // If paused, we don't need to do anything (music isn't progressing)
-    if (isSongPaused()) return;
-
     currentSong = getSongInfo();
     upcomingSong = getNextSongInQueue();
     if (currentSong.title === '') {
         return;
     }
+
+    // If paused, we don't need to do anything (music isn't progressing)
+    if (isSongPaused()) return;
 
     // Was it the first song?
     if(isFirstSong){
