@@ -111,6 +111,12 @@ chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendRespon
         const { oldSongTitle, oldArtist, newSongTitle, newArtist, currentTime } = message.payload;
         console.log(`[Pre-Warm] Received request for ${oldSongTitle} -> ${newSongTitle}`);
         generateRJIntro(oldSongTitle, oldArtist, newSongTitle, newArtist, currentTime);
+    } else if (message.type === 'OFFSCREEN_TO_CONTENT_PROXY') {
+        const { tabId, message: nestedMessage } = message.payload;
+        chrome.tabs.sendMessage(tabId, nestedMessage, (response) => {
+            sendResponse(response);
+        });
+        return true; // Keep channel open for async response
     }
 });
 
@@ -150,16 +156,23 @@ function announceSong(tabId: number, currentSongTitle: string, currentSongArtist
                     });
                 }
 
-              await chrome.runtime.sendMessage({
+              const playbackResult = await chrome.runtime.sendMessage({
                   type: 'PLAY_AUDIO',
                   payload: {
                       tabId,
                       localServerPort,
                       textToSpeak: response,
                       speechProvider,
-                      geminiApiKey
+                      geminiApiKey,
+                      forSongNow: currentSongTitle,
+                      forSongNext: upcomingSongTitle
                   }
               });
+
+              if (playbackResult && playbackResult.success === false) {
+                  throw new Error(playbackResult.error || "Offscreen audio playback reported failure");
+              }
+
               console.log(`${speechProvider} TTS ended`);
               chrome.tabs.sendMessage(tabId, { type: 'TTS_ENDED' });
           } catch (e) {

@@ -33,6 +33,30 @@ chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendRespon
   }
 });
 
+// When the user clicks "next", it should shut the fuck up.
+// When the user clicks "next", it should shut the fuck up.
+async function shouldShutTheFuckUp(tabId: number, songNow?: string, songNext?: string) : Promise<boolean>{
+    const currentSongInfoFromContentScript : MessageSchema = await getCurrentSongInfo(tabId);
+    console.log(`[Offscreen] Validation Check - Expected: Now="${songNow}", Next="${songNext}"`);
+    if(currentSongInfoFromContentScript.type === 'CURRENT_SONG_INFO'){
+        console.log(`[Offscreen] Validation Check - Actual: Now="${currentSongInfoFromContentScript.payload.currentSongTitle}", Next="${currentSongInfoFromContentScript.payload.upcomingSongTitle}"`);
+        return currentSongInfoFromContentScript.payload.currentSongTitle !== songNow 
+        || currentSongInfoFromContentScript.payload.upcomingSongTitle !== songNext;
+    }
+    console.log(`[Offscreen] Validation Check - Received unexpected message type: ${currentSongInfoFromContentScript.type}`);
+    return true;
+}
+
+function getCurrentSongInfo(tabId: number) : Promise<MessageSchema>{
+    return chrome.runtime.sendMessage({ 
+        type: 'OFFSCREEN_TO_CONTENT_PROXY', 
+        payload: { 
+            tabId, 
+            message: { type: 'GET_CURRENT_SONG_INFO' } 
+        } 
+    });
+}
+
 async function fetchAudio(localServerPort: number, textToSpeak: string): Promise<string> {
     console.log("Fetching Audio from Local Server...");
     const response = await fetch(`http://localhost:${localServerPort}/speak`, {
@@ -206,8 +230,13 @@ async function generateWithGeminiAPI(data: { oldSongTitle: string, oldArtist: st
     }
 }
 
-async function playAudio(tabId: number, payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api' | 'kokoro'; geminiApiKey?: string }) {
+async function playAudio(tabId: number, payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api' | 'kokoro'; geminiApiKey?: string; forSongNow?: string; forSongNext?: string }) {
     try {
+        // should I shut the fuck up instead?
+        if(await shouldShutTheFuckUp(tabId, payload.forSongNow, payload.forSongNext)){
+            console.log("[Offscreen] Validation failed: Song changed. Shutup mode activated.")
+            return;
+        }
         console.log(`[Offscreen] Playing audio using provider: ${payload.speechProvider || 'tts'}`);
 
         // 1. Try Memory Cache
@@ -261,19 +290,7 @@ async function playAudio(tabId: number, payload: { localServerPort?: number; tex
             });
         }
     } catch (e) {
-        console.error("[Offscreen] Audio playback failed, failing back to TTS", e);
-    chrome.tts.speak(payload.textToSpeak, {
-        rate: 0.9,
-        pitch: 1.1,
-        volume: 1,
-        voiceName: 'Google UK English Female',
-        onEvent: (event) => {
-            if (event.type === 'end') {
-                console.log("[Offscreen] Fallback TTS ended");
-                chrome.tabs.sendMessage(tabId, { type: 'TTS_ENDED' });
-            }
-        }
-      });
+        console.error("[Offscreen] Audio playback failed", e);
         audioCache.delete(payload.textToSpeak);
         throw e;
     }

@@ -386,6 +386,21 @@ chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendRespon
     }
 });
 
+// Someone requested current song info
+chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendResponse) => {
+    if(message.type === 'GET_CURRENT_SONG_INFO'){
+        log("Received request to validate current song info.");
+        const message: MessageSchema = {
+            type: 'CURRENT_SONG_INFO',
+            payload: {
+                currentSongTitle: currentSong?.title,
+                upcomingSongTitle: upcomingSong?.title || 'Unknown'
+            }
+        };
+        sendResponse(message);
+    }
+});
+
 // Start watching
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
