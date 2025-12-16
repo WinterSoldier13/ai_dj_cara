@@ -308,7 +308,6 @@ function getSongInfo(): CurrentSong {
             artist = parts[0] || "";
             album = parts[1] || "";
         }
-        log(`Current Song Info : Title="${title}", Artist="${artist}", Album="${album}", Duration=${duration}, CurrentTime=${currentTime}, IsPaused=${isPaused}`);
 
         return {
             title,
