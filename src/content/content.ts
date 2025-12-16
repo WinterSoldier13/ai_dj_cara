@@ -500,6 +500,8 @@ function get_status() {
     }
 
     const timeRemaining = currentSong.duration - currentSong.currentTime;
+    log(`Time Remaining: ${timeRemaining}s for key: ${songKey} of duration ${currentSong.duration}`);
+    log(`Has alerted before: ${alertedSongs.has(songKey)}`);
 
     // Check if we already alerted for this song pair
     if (alertedSongs.has(songKey)) return;
