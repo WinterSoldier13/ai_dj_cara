@@ -30,8 +30,11 @@ const INDICATOR_ID = 'ai-rj-mode-indicator';
 let currentSong: CurrentSong | null = null;
 let upcomingSong: UpcomingSong | null = null;
 
+// Sets to track processed songs.
+// Using a simple cleanup strategy: clear if size exceeds threshold.
 const prewarmedSongs = new Set<string>();
 const alertedSongs = new Set<string>();
+const MAX_SET_SIZE = 50;
 
 let isDebug = false;
 let isEnabled = true;
@@ -174,19 +177,49 @@ export const isSongPaused = (): boolean => {
 };
 
 export const resumeSong = (): void => {
-    const media = document.querySelector('video, audio') as HTMLMediaElement | null;
-    if(!media?.paused) return;
-    media?.play();
-    if(!isSongPaused()) return;
-    click_play_pause();
+    const tryResume = (attempt: number) => {
+        if (attempt > 10) {
+            log("Giving up on resumeSong after 10 attempts.");
+            return;
+        }
+
+        const media = document.querySelector('video, audio') as HTMLMediaElement | null;
+        if (media && !media.paused) {
+            log("Resume successful (media.paused is false).");
+            return;
+        }
+
+        if (media) {
+             media.play().catch(e => log("Error playing media:", e));
+        } else {
+            click_play_pause();
+        }
+
+        // Check again after a short delay
+        setTimeout(() => {
+            if (isSongPaused()) {
+                log(`Still paused, retrying resume... (Attempt ${attempt + 1})`);
+                tryResume(attempt + 1);
+            } else {
+                log("Resume verified.");
+            }
+        }, 300);
+    };
+
+    tryResume(1);
 }
 
 export const pauseSong = (): void => {
     const media = document.querySelector('video, audio') as HTMLMediaElement | null;
     if(media?.paused) return;
     media?.pause();
-    if(isSongPaused()) return;
-    click_play_pause();
+
+    // Double check with DOM button state just in case
+    setTimeout(() => {
+         if(!isSongPaused()) {
+             click_play_pause();
+         }
+    }, 100);
 }
 
 export const click_play_pause = (): void => {
@@ -209,7 +242,7 @@ export function getSongInfo(): CurrentSong {
         const timer = getTextFromXPath(currentSongTimerXPath); // it will be a string like "0:00 / 3:59"
 
         if (!timer) {
-            log(new Error('getSongInfo: Timer element not found'));
+            // log(new Error('getSongInfo: Timer element not found')); // Too noisy
             return { title: '', artist: '', album: '', duration: 0, currentTime: 0, isPaused: false };
         }
 
@@ -319,9 +352,15 @@ function get_status() {
 
     // Key for state tracking: Current Title + Upcoming Title
     if (!upcomingSong) return;
-    const songKey = currentSong.title + upcomingSong.title;
+    const songKey = currentSong.title + "::" + upcomingSong.title;
+
+    // Cleanup memory if sets are too big
+    if (prewarmedSongs.size > MAX_SET_SIZE) prewarmedSongs.clear();
+    if (alertedSongs.size > MAX_SET_SIZE) alertedSongs.clear();
 
     // Pre-warm checking
+    // Using a safe range instead of strict > 0.1, to avoid re-triggering if user seeks back.
+    // However, the Set handles the 'once per session' check.
     const progress = currentSong.currentTime / currentSong.duration;
     if (progress > 0.1 && !prewarmedSongs.has(songKey)) {
         log(`Song > 10%. Pre-warming RJ model for key: ${songKey}`);
@@ -342,22 +381,27 @@ function get_status() {
 
     // Alert checking
     const timeRemaining = currentSong.duration - currentSong.currentTime;
-    if(timeRemaining > 2 || alertedSongs.has(songKey)) return;
 
-    log(`Song ending in 2s. Triggering pause for key: ${songKey}`);
-    pauseSong();
-    alertedSongs.add(songKey);
+    // Check if we already alerted for this song pair
+    if (alertedSongs.has(songKey)) return;
 
-    const message: MessageSchema = {
-        type: 'SONG_ABOUT_TO_END',
-        payload: {
-            currentSongTitle: currentSong.title,
-            currentSongArtist: currentSong.artist,
-            upcomingSongTitle: upcomingSong?.title || 'Unknown',
-            upcomingSongArtist: upcomingSong?.artist || 'Unknown'
-        }
-    };
-    chrome.runtime.sendMessage(message);
+    // Condition: Time < 2s AND not paused AND duration is reasonable (>10s to avoid ads/glitches?)
+    if (timeRemaining <= 2 && timeRemaining > 0 && currentSong.duration > 10) {
+        log(`Song ending in 2s. Triggering pause for key: ${songKey}`);
+        pauseSong();
+        alertedSongs.add(songKey);
+
+        const message: MessageSchema = {
+            type: 'SONG_ABOUT_TO_END',
+            payload: {
+                currentSongTitle: currentSong.title,
+                currentSongArtist: currentSong.artist,
+                upcomingSongTitle: upcomingSong?.title || 'Unknown',
+                upcomingSongArtist: upcomingSong?.artist || 'Unknown'
+            }
+        };
+        chrome.runtime.sendMessage(message);
+    }
 }
 
 function startPolling() {
@@ -376,11 +420,12 @@ function startPolling() {
 
 chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendResponse) => {
     if (message.type === 'TTS_ENDED') {
-        log("TTS Ended. IsSongPaused: ", isSongPaused());
-        let count =0;
-        while(isSongPaused() && count<10){
+        log("TTS Ended. Attempting to resume song.");
+        // Only resume if we are currently paused.
+        if (isSongPaused()) {
             resumeSong();
-            count++;
+        } else {
+             log("TTS Ended, but song is already playing. Skipping resume.");
         }
     }
 });
@@ -388,15 +433,19 @@ chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendRespon
 // Someone requested current song info
 chrome.runtime.onMessage.addListener((message: MessageSchema, sender, sendResponse) => {
     if(message.type === 'GET_CURRENT_SONG_INFO'){
+        // Refresh info to be sure
+        const current = getSongInfo();
+        const next = getNextSongInQueue();
+
         log("Received request to validate current song info.");
-        const message: MessageSchema = {
+        const response: MessageSchema = {
             type: 'CURRENT_SONG_INFO',
             payload: {
-                currentSongTitle: currentSong?.title,
-                upcomingSongTitle: upcomingSong?.title || 'Unknown'
+                currentSongTitle: current.title,
+                upcomingSongTitle: next?.title || 'Unknown'
             }
         };
-        sendResponse(message);
+        sendResponse(response);
     }
 });
 

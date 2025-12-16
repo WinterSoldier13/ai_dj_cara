@@ -14,6 +14,9 @@ if (env.backends?.onnx?.wasm) {
 
 const audioCache = new Map<string, Promise<string>>(); // text -> Promise<blobUrl>
 
+// Track current playing audio to prevent overlaps
+let currentAudio: HTMLAudioElement | null = null;
+
 // Lazy-loaded KokoroTTS instance
 let kokoroTTSInstance: KokoroTTS | null = null;
 const KOKORO_MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX"; // default
@@ -40,6 +43,10 @@ async function shouldShutTheFuckUp(tabId: number, songNow?: string, songNext?: s
     console.log(`[Offscreen] Validation Check - Expected: Now="${songNow}", Next="${songNext}"`);
     if(currentSongInfoFromContentScript.type === 'CURRENT_SONG_INFO'){
         console.log(`[Offscreen] Validation Check - Actual: Now="${currentSongInfoFromContentScript.payload.currentSongTitle}", Next="${currentSongInfoFromContentScript.payload.upcomingSongTitle}"`);
+        // If titles are missing/undefined, we shouldn't block, assuming normal flow, unless we are strict.
+        // But strict is better to avoid wrong intro.
+        if (!songNow || !currentSongInfoFromContentScript.payload.currentSongTitle) return false;
+
         return currentSongInfoFromContentScript.payload.currentSongTitle !== songNow 
         || currentSongInfoFromContentScript.payload.upcomingSongTitle !== songNext;
     }
@@ -144,10 +151,6 @@ async function handleGeneration(payload: { oldSongTitle: string; oldArtist: stri
     } else if (modelProvider === 'webllm' || payload.useWebLLM) {
         // Condition checked at build time
         if (process.env.INCLUDE_WEBLLM) {
-            // Dynamic import to avoid bundling if not included
-            // Note: In webpack, dynamic import usually creates a separate chunk. 
-            // Since we want to control bundling via DefinePlugin, we can try require but 
-            // standard dynamic import `import()` is better for splitting.
             try {
                 // @ts-ignore
                 const webLLMService = await import('./webllmService');
@@ -232,6 +235,13 @@ async function generateWithGeminiAPI(data: { oldSongTitle: string, oldArtist: st
 
 async function playAudio(tabId: number, payload: { localServerPort?: number; textToSpeak: string; speechProvider?: 'tts' | 'localserver' | 'gemini-api' | 'kokoro'; geminiApiKey?: string; forSongNow?: string; forSongNext?: string }) {
     try {
+        // Stop any currently playing audio to prevent overlap
+        if (currentAudio) {
+            console.log("[Offscreen] Stopping currently playing audio to start new track.");
+            currentAudio.pause();
+            currentAudio = null;
+        }
+
         // should I shut the fuck up instead?
         if(await shouldShutTheFuckUp(tabId, payload.forSongNow, payload.forSongNext)){
             console.log("[Offscreen] Validation failed: Song changed. Shutup mode activated.")
@@ -273,20 +283,52 @@ async function playAudio(tabId: number, payload: { localServerPort?: number; tex
 
         // If it's a blob URL (localserver or Kokoro), use Audio element
         if (typeof urlOrBuffer === 'string' && urlOrBuffer.startsWith('blob:')) {
-            const audio = new Audio(urlOrBuffer);
+            currentAudio = new Audio(urlOrBuffer);
             return new Promise<void>((resolve, reject) => {
-                audio.onended = () => resolve();
-                audio.onerror = (e) => reject(e);
-                audio.play().catch(reject);
+                if(!currentAudio) return reject("Audio object lost");
+                currentAudio.onended = () => {
+                    resolve();
+                    currentAudio = null;
+                };
+                currentAudio.onerror = (e) => {
+                    reject(e);
+                    currentAudio = null;
+                };
+                currentAudio.play().catch((e) => {
+                    reject(e);
+                    currentAudio = null;
+                });
             });
         }
         // If it's an ArrayBuffer (Gemini API returns PCM, which we convert to WAV ArrayBuffer or play directly)
         else {
-             const audio = new Audio(urlOrBuffer);
+            // Note: In strict Typescript, urlOrBuffer would be string.
+            // But fetchGeminiTTS returns a string (blob URL) now?
+            // Wait, fetchGeminiTTS calls URL.createObjectURL(blob) at the end.
+            // So urlOrBuffer IS a string.
+            // The logic below 'else' seems to assume it might not be?
+            // Actually, fetchGeminiTTS returns a blob URL string.
+            // So this block is redundant if everything returns a blob URL.
+            // Let's verify fetchGeminiTTS again.
+            // Yes, it returns `URL.createObjectURL`.
+
+            // However, if we change implementation later, let's keep it robust.
+            // If it IS a string, treating it as URL.
+             currentAudio = new Audio(urlOrBuffer);
              return new Promise<void>((resolve, reject) => {
-                audio.onended = () => resolve();
-                audio.onerror = (e) => reject(e);
-                audio.play().catch(reject);
+                if(!currentAudio) return reject("Audio object lost");
+                currentAudio.onended = () => {
+                    resolve();
+                    currentAudio = null;
+                };
+                currentAudio.onerror = (e) => {
+                    reject(e);
+                    currentAudio = null;
+                };
+                currentAudio.play().catch((e) => {
+                    reject(e);
+                    currentAudio = null;
+                });
             });
         }
     } catch (e) {
