@@ -471,7 +471,10 @@ function get_status() {
     }
 
     // Key for state tracking: Current Title + Upcoming Title
-    if (!upcomingSong) return;
+    if (!upcomingSong) {
+        log("No upcoming song found. Skipping status check.");
+        return;
+    }
     const songKey = currentSong.title + "::" + upcomingSong.title;
 
     // Cleanup memory if sets are too big
@@ -503,8 +506,16 @@ function get_status() {
     log(`Time Remaining: ${timeRemaining}s for key: ${songKey} of duration ${currentSong.duration}`);
     log(`Has alerted before: ${alertedSongs.has(songKey)}`);
 
+    if (timeRemaining < 10 && isDebug) {
+        log(`[DEBUG] Time remaining: ${timeRemaining}, Paused: ${isSongPaused()}, Duration: ${currentSong.duration}, Alerted: ${alertedSongs.has(songKey)}`);
+    }
+
     // Check if we already alerted for this song pair
     if (alertedSongs.has(songKey)) return;
+
+    if (timeRemaining < 10 && timeRemaining >= 0) {
+         log(`Song closing in: ${timeRemaining}s left. Duration: ${currentSong.duration}s. Paused? ${isSongPaused()}`);
+    }
 
     // Condition: Time < 2s AND duration is reasonable (>10s to avoid ads/glitches?)
     if (timeRemaining <= 2 && timeRemaining > 0 && currentSong.duration > 10) {
