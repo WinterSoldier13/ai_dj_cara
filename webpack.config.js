@@ -13,6 +13,7 @@ module.exports = (env) => {
             background: './src/background/background.ts',
             content: './src/content/content.ts',
             offscreen: './src/offscreen/offscreen.ts',
+            injector: './src/injection/injector.ts'
         },
         output: {
             path: path.resolve(__dirname, 'dist'),
