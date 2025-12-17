@@ -87,15 +87,14 @@ export type MessageSchema = {
     type: 'YTM_EXTENSION_REQUEST_DATA'
 } | {
     type: 'YTM_EXTENSION_RESPONSE_DATA';
-    upcomingSong?: UpcomingSong
+    currentSong?: CurrentSong;
+    upcomingSong?: UpcomingSong;
 };
 
 export interface CurrentSong {
     title: string;
     artist: string;
     album: string;
-    duration: number;
-    currentTime: number;
     isPaused: boolean;
 }
 
