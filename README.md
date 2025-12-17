@@ -1,6 +1,6 @@
 # AI DJ Cara - Your Personal AI Radio Jockey
 
-> probably the best thing I've ever coded for myself
+> probably the best fucking thing I've ever coded for myself
 
 **AI DJ Cara** transforms your YouTube Music experience by adding a personality to your playlist. Just like a real Radio Jockey, Cara introduces the next song with hype, wit, and energy, making your listening session feel like a live radio show curated just for you.
 

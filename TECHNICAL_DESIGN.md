@@ -63,7 +63,7 @@ graph TD
 ## 3. Component Details
 
 ### 3.1. Injector Script (The Interceptor)
-*   **Location**: `src/content/injector.ts` (injected into `MAIN` world).
+*   **Location**: `src/injection/injector.ts` (injected into `MAIN` world).
 *   **Mechanism**:
     *   Patches `navigator.mediaSession.metadata` setter.
     *   Detects `set` calls to identify song changes immediately.
@@ -94,7 +94,7 @@ graph TD
 *   **Core Capabilities**:
     *   **LLM Service**: Calls Gemini API (`gemini-2.5-flash`), WebLLM (Llama 3.1), or Local Server.
     *   **TTS Service**: Calls Gemini TTS, Kokoro JS (ONNX), or Local Server.
-    *   **Validation**: Implements the `shouldAbortPlayback` check to ensure the intro matches the currently playing song before starting audio.
+    *   **Validation**: Implements the `shouldShutTheFuckUp` check (The "Shut The F*** Up" protocol) to ensure the intro matches the currently playing song before starting audio.
 
 ---
 
