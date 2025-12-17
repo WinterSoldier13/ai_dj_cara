@@ -327,13 +327,11 @@ function schedulePrefetch() {
   // Store start time for this pair attempt
   const now = Date.now();
 
-  // Check if we did this recently (Debounce/Throttle)
-  // The user requirement: "prefetch only after 15s of the first prefetch request for the given pair"
-  // I interpret this as: "Wait 15s from song start before *actually* requesting."
-
+  // 40s into a song, probably a good time to prefetch the RJ intro, the user will hopefully
+  // not skip and waste our expensive Gemini API call :/.
   prefetchTimer = setTimeout(() => {
     performPrefetch(pairKey, currentSong!, upcomingSong!);
-  }, 15000);
+  }, 40000);
 }
 
 function performPrefetch(
