@@ -300,7 +300,7 @@ async function generateWithGeminiAPI(data: {
     return text;
   } catch (err) {
     console.error("Gemini API request failed:", err);
-    return `Coming up next: ${data.newSongTitle} by ${data.newArtist}.`;
+    return `And this is ${data.newSongTitle} by ${data.newArtist}.`;
   }
 }
 

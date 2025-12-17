@@ -38,7 +38,7 @@ export async function generateRJIntro(
       console.log(
         `[Cache Miss] Generation disallowed. Using fallback for ${newSongTitle}`,
       );
-      return `Coming up next: ${newSongTitle} by ${newArtist}`;
+      return `This is: ${newSongTitle} by ${newArtist}`;
     }
 
     console.log(`[Cache Miss] Generating new intro for ${key}`);
@@ -84,12 +84,12 @@ export async function generateRJIntro(
       console.error("RJ Model failed:", err);
       // Don't return here, let it fall through or handle quietly?
       // If failed, we likely have no text.
-      return `Stay tuned. We got ${newSongTitle} by ${newArtist} coming up next.`;
+      return `and this is ${newSongTitle} by ${newArtist}`;
     }
   }
 
   if (!textToSpeak)
-    return `Stay tuned. We got ${newSongTitle} by ${newArtist} coming up next.`;
+    return `And this is ${newSongTitle} by ${newArtist}`;
 
   // 2. Trigger Preload (Unless we just failed to generate OR we are just playing)
   // If we are "allowing generation", it usually means we are pre-warming.
